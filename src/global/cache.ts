@@ -712,7 +712,8 @@ function reduceChats<T extends GlobalState>(global: T): GlobalState['chats'] {
     const messages = selectChatMessages(global, messageList.chatId);
     const viewportIds = selectViewportIds(global, messageList.chatId, messageList.threadId, tabId);
     return viewportIds?.map((id) => {
-      const message = messages[id];
+      // TeleTwin: corp messages are already stripped while a corp chat is open
+      const message = messages?.[id];
       if (!message) return undefined;
       const content = message.content;
       const webPage = selectFullWebPageFromMessage(global, message);

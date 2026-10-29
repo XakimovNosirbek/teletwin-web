@@ -3383,13 +3383,31 @@ export interface LangPair {
   'TeleTwinLogin': undefined;
   'TeleTwinPassword': undefined;
   'TeleTwinSignIn': undefined;
-  'TeleTwinCancel': undefined;
   'TeleTwinLogOut': undefined;
   'TeleTwinErrorCredentials': undefined;
   'TeleTwinErrorNetwork': undefined;
   'TeleTwinErrorRejected': undefined;
   'TeleTwinRevoked': undefined;
-  'TeleTwinForwardBlocked': undefined;
+  'TeleTwinForwardOutBlocked': undefined;
+  'TeleTwinGateSubtitle': undefined;
+  'TeleTwinTabRegister': undefined;
+  'TeleTwinFullName': undefined;
+  'TeleTwinPasswordRepeat': undefined;
+  'TeleTwinNote': undefined;
+  'TeleTwinRegister': undefined;
+  'TeleTwinErrorPasswordMismatch': undefined;
+  'TeleTwinErrorPasswordShort': undefined;
+  'TeleTwinErrorLoginTaken': undefined;
+  'TeleTwinPending': undefined;
+  'TeleTwinRejected': undefined;
+  'TeleTwinBack': undefined;
+  'TeleTwinTelegramLogOut': undefined;
+  'TeleTwinWakeUp': undefined;
+  'TeleTwinWakeUpPick': undefined;
+  'TeleTwinWakeUpPickTitle': undefined;
+  'TeleTwinWakeUpTooSoon': undefined;
+  'TeleTwinWakeUpOpen': undefined;
+  'TeleTwinWakeUpSound': undefined;
 }
 
 export interface LangPairWithVariables<V = LangVariable> {
@@ -5643,6 +5661,12 @@ export interface LangPairWithVariables<V = LangVariable> {
   'PeerPickerUnknownPeer': {
     'id': V;
   };
+  'TeleTwinWakeUpSent': {
+    'name': V;
+  };
+  'TeleTwinWakeUpIncoming': {
+    'name': V;
+  };
 }
 
 export interface LangPairPlural {
@@ -6633,7 +6657,9 @@ export interface LangKeyGroups {
       | 'WalletConnectRequestAppProcessed'
       | 'WalletConnectRequestAppDeclined'
       | 'WalletConnectRequestAppExpired'
-      | 'WalletConnectSignTitle';
+      | 'WalletConnectSignTitle'
+      | 'TeleTwinWakeUpSent'
+      | 'TeleTwinWakeUpIncoming';
     variables: 'name';
   };
   'limit,premiumLimit': {

@@ -14,7 +14,7 @@ import { getCurrentTabId, subscribeToMasterChange } from '../../../util/establis
 import generateUniqueId from '../../../util/generateUniqueId';
 import { ACCOUNT_SLOT, DATA_BROADCAST_CHANNEL_NAME } from '../../../util/multiaccount';
 import { pause, throttleWithTickEnd } from '../../../util/schedulers';
-import { guardApiCall } from '../../../teletwin/guard';
+import { routeApiCall } from '../../../teletwin/guard';
 
 type RequestState = {
   messageId: string;
@@ -218,9 +218,11 @@ export function setShouldEnableDebugLog(value: boolean) {
 export function callApiLocal<T extends keyof Methods>(
   fnName: T, ...args: MethodArgs<T>
 ): EnsurePromise<MethodResponse<T>> {
-  const guard = guardApiCall(fnName, args);
-  if (guard.isBlocked) return Promise.resolve(undefined) as EnsurePromise<MethodResponse<T>>;
-  args = guard.args as MethodArgs<T>;
+  // TeleTwin: corp chats are served by the TeleTwin server and must never reach Telegram
+  const route = routeApiCall(fnName, args);
+  if (route.kind === 'corp') return route.promise as EnsurePromise<MethodResponse<T>>;
+  if (route.kind === 'blocked') return Promise.resolve(undefined) as EnsurePromise<MethodResponse<T>>;
+  args = route.args as MethodArgs<T>;
 
   if (!isInited) {
     if (NO_QUEUE_BEFORE_INIT.has(fnName)) {
@@ -266,10 +268,11 @@ export function callApiLocal<T extends keyof Methods>(
 }
 
 export function callApi<T extends keyof Methods>(fnName: T, ...args: MethodArgs<T>): EnsurePromise<MethodResponse<T>> {
-  // TeleTwin: corp chats live on the TeleTwin server and must never reach Telegram
-  const guard = guardApiCall(fnName, args);
-  if (guard.isBlocked) return Promise.resolve(undefined) as EnsurePromise<MethodResponse<T>>;
-  args = guard.args as MethodArgs<T>;
+  // TeleTwin: corp chats are served by the TeleTwin server and must never reach Telegram
+  const route = routeApiCall(fnName, args);
+  if (route.kind === 'corp') return route.promise as EnsurePromise<MethodResponse<T>>;
+  if (route.kind === 'blocked') return Promise.resolve(undefined) as EnsurePromise<MethodResponse<T>>;
+  args = route.args as MethodArgs<T>;
 
   if (!isInited && isMasterTab) {
     if (NO_QUEUE_BEFORE_INIT.has(fnName)) {

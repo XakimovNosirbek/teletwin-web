@@ -1,48 +1,81 @@
-// Corp sync engine, ported from the PWA client (`web/src/corp.ts`) and the desktop fork (`corp_manager.cpp`):
-//  - session start -> GET chats -> per chat GET messages?limit=100 -> fabricated chats/messages enter global state
+// Corp sync engine:
+//  - session start -> GET config + chats -> per chat GET messages?limit=100 -> fabricated chats/messages enter global state
 //  - hub: WebSockets only, `access_token` query, `Ready()` after connect, then catch up every loaded chat
-//    with GET messages?afterId=<last id>
-//  - events: `message` (dedupe by id), `chats_changed` (reload chats), `logout` (revoke)
+//    with GET messages?afterId=<last id> and GET changes?since=<last sync>
+//  - events: `message`, `message_edited`, `messages_deleted`, `reactions`, `pins`, `read`, `typing`, `wakeup`,
+//    `chats_changed` (reload chats), `logout` (revoke)
 //  - hub closed -> GET me: 401 -> revoke, otherwise reconnect with backoff 1 s, 2 s, 4 s ... 30 s (reset on connect)
 //  - any API 401 -> revoke
-// The engine runs in the master tab only; global state reaches other tabs through the multitab diff sync.
+// The engine keeps the loaded corp history (`messagesByChat`) and re-applies it after Telegram syncs replace
+// sections of global state. It runs in the master tab only; other tabs follow through the multitab diff sync.
 import type { HubConnection } from '@microsoft/signalr';
 import { HttpTransportType, HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
 import { getActions, getGlobal, setGlobal } from '../global';
 
-import type { ApiMessage } from '../api/types';
+import type { ApiMessage, ApiTypingStatus } from '../api/types';
 import type { GlobalState } from '../global/types';
-import type { CorpChatInfo, CorpMessage } from './api';
-import type { CorpSnapshot } from './state';
+import type { CorpChatInfo, CorpMessage, CorpReaction } from './api';
+import type { CorpLinkRule, CorpSnapshot } from './state';
 import type { CorpCredentials } from './storage';
 import { MAIN_THREAD_ID } from '../api/types';
 
-import { updateUsers } from '../global/reducers';
+import { updateChat, updateUsers } from '../global/reducers';
+import { replaceThreadLocalStateParam, updateThreadReadState } from '../global/reducers/threads';
 import { selectChatMessage, selectCurrentMessageList } from '../global/selectors';
-import { selectThreadReadState } from '../global/selectors/threads';
+import { selectThreadLocalStateParam, selectThreadReadState } from '../global/selectors/threads';
 import { getCurrentTabId } from '../util/establishMultitabRole';
 import { getTranslationFn } from '../util/localization';
+import { getServerTime } from '../util/serverTime';
 import {
-  buildCorpHubUrl, fetchCorpChats, fetchCorpMe, fetchCorpMessages, isCorpUnauthorized, logoutCorp,
+  buildCorpHubUrl, fetchCorpChanges, fetchCorpChats, fetchCorpConfig, fetchCorpMe, fetchCorpMessages,
+  isCorpUnauthorized, logoutCorp,
 } from './api';
 import { buildCorpChatId, buildCorpUserId, isCorpChatId } from './ids';
+import { clearCorpMedia } from './media';
 import {
-  applyCorpSnapshot, buildCorpMessage, buildCorpUser, isCorpSnapshotApplied, removeCorpData,
+  applyCorpSnapshot, buildCorpMessage, buildCorpReactions, buildCorpUser, isCorpSnapshotApplied, removeCorpData,
 } from './state';
 import {
   loadCredentials, loadReadMarks, removeCredentials, saveReadMarks,
 } from './storage';
 
 const HISTORY_LIMIT = 100;
-// The server clamps `limit` to 1..200 and has no "before id" paging: this is the deepest history available
-const HISTORY_MAX = 200;
 const RESYNC_MAX_PAGES = 10;
 const RECONNECT_DELAY_MIN = 1000;
 const RECONNECT_DELAY_MAX = 30000;
 const RESTORE_LIMIT_PER_WINDOW = 20;
 const RESTORE_WINDOW = 10000;
+// The first change feed request reaches back this far before the session start, against clock skew
+const CHANGES_OVERLAP = 60000;
+
+const TYPING_ACTIONS: Record<string, Exclude<ApiTypingStatus['type'], 'watchingAnimations'>> = {
+  typing: 'typing',
+  recordVoice: 'recordAudio',
+  recordAudio: 'recordAudio',
+  recordRound: 'recordRound',
+  recordVideo: 'recordVideo',
+  uploadFile: 'uploadFile',
+  uploadPhoto: 'uploadPhoto',
+  uploadVideo: 'uploadVideo',
+  uploadAudio: 'uploadAudio',
+  uploadRound: 'uploadRound',
+  chooseSticker: 'chooseSticker',
+};
 
 type StatusListener = (credentials?: CorpCredentials) => void;
+
+export interface CorpWakeUp {
+  fromId: number;
+  fromName: string;
+  chatId?: number;
+}
+
+interface HubTyping {
+  chatId: number;
+  employeeId: number;
+  fullName: string;
+  action: string;
+}
 
 class CorpEngine {
   telegramUserId?: string;
@@ -51,6 +84,12 @@ class CorpEngine {
 
   onStatusChange?: StatusListener;
 
+  onBindChange?: (telegramUserId?: string) => void;
+
+  onWakeUp?: (wakeUp: CorpWakeUp) => void;
+
+  linkRule?: CorpLinkRule;
+
   private epoch = 0;
 
   private chats: CorpChatInfo[] = [];
@@ -58,8 +97,6 @@ class CorpEngine {
   private areChatsLoaded = false;
 
   private messagesByChat: Record<number, CorpMessage[]> = {};
-
-  private canLoadOlder: Record<number, boolean> = {};
 
   private readMarks: Record<number, number> = {};
 
@@ -77,9 +114,13 @@ class CorpEngine {
 
   private isResyncing = false;
 
-  private restoreTimestamps: number[] = [];
+  private changesSince: Record<number, string> = {};
 
-  private loadingOlder = new Set<number>();
+  private sessionStartedAt = 0;
+
+  private pendingByClientId = new Map<string, number>();
+
+  private restoreTimestamps: number[] = [];
 
   private isMaster = false;
 
@@ -93,7 +134,8 @@ class CorpEngine {
       this.unbind();
       this.telegramUserId = telegramUserId;
       this.isMaster = isMaster;
-      this.reloadCredentials();
+      this.onBindChange?.(telegramUserId);
+      this.reloadCredentials(true);
       return;
     }
 
@@ -111,6 +153,7 @@ class CorpEngine {
     this.stopSession();
     this.telegramUserId = undefined;
     this.credentials = undefined;
+    this.onBindChange?.(undefined);
     this.onStatusChange?.(undefined);
   }
 
@@ -118,15 +161,22 @@ class CorpEngine {
     return this.isSessionActive;
   }
 
+  get employeeId() {
+    return this.credentials?.employee.id;
+  }
+
   // Credentials changed in storage: a login, a logout or a revoke, possibly in another tab
-  reloadCredentials() {
+  reloadCredentials(shouldNotify?: boolean) {
     const credentials = this.telegramUserId ? loadCredentials(this.telegramUserId) : undefined;
-    if (credentials?.token === this.credentials?.token) return;
+    if (credentials?.token === this.credentials?.token) {
+      if (shouldNotify) this.onStatusChange?.(credentials);
+      return;
+    }
 
     const hadCredentials = Boolean(this.credentials);
     this.stopSession();
     this.credentials = credentials;
-    if (hadCredentials && !credentials && this.isMaster) removeCorpEverywhere();
+    if (hadCredentials && !credentials) removeCorpEverywhere(this.isMaster);
     this.onStatusChange?.(credentials);
     if (credentials && this.isMaster) this.startSession();
   }
@@ -159,14 +209,16 @@ class CorpEngine {
     this.stopSession();
     this.credentials = undefined;
     // Other tabs follow through the multitab diff sync and the `storage` event
-    removeCorpEverywhere();
+    removeCorpEverywhere(true);
     this.onStatusChange?.(undefined);
   }
 
   private startSession() {
     this.stopSession();
     this.isSessionActive = true;
+    this.sessionStartedAt = Date.now();
     this.readMarks = loadReadMarks(this.telegramUserId!, this.credentials!.employee.id);
+    void this.loadConfig();
     void this.loadChats();
     this.connectHub();
   }
@@ -178,13 +230,14 @@ class CorpEngine {
     this.chats = [];
     this.areChatsLoaded = false;
     this.messagesByChat = {};
-    this.canLoadOlder = {};
     this.readMarks = {};
     this.snapshot = undefined;
-    this.loadingOlder.clear();
+    this.changesSince = {};
+    this.pendingByClientId.clear();
+    this.linkRule = undefined;
   }
 
-  private handleFailure(err: unknown) {
+  handleFailure(err: unknown) {
     if (isCorpUnauthorized(err)) this.revoke();
   }
 
@@ -199,6 +252,7 @@ class CorpEngine {
         messagesByChat: this.messagesByChat,
         readMarks: this.readMarks,
         folderTitle: getTranslationFn()('TeleTwinFolderTitle'),
+        linkRule: this.linkRule,
       };
     }
 
@@ -244,7 +298,80 @@ class CorpEngine {
     if (isChanged) saveReadMarks(this.telegramUserId!, this.credentials!.employee.id, this.readMarks);
   }
 
-  // ---- chats & history ----
+  // ---- lookups for the provider ----
+
+  getChatInfo(serverChatId: number) {
+    return this.chats.find(({ id }) => id === serverChatId);
+  }
+
+  getCachedMessages(serverChatId: number) {
+    return this.messagesByChat[serverChatId];
+  }
+
+  buildMessage(dto: CorpMessage): ApiMessage | undefined {
+    const chat = this.getChatInfo(dto.chatId);
+    if (!chat || !this.credentials || dto.isDeleted) return undefined;
+
+    this.ensureSender(dto.senderId, dto.senderName);
+
+    return buildCorpMessage(dto, chat, this.credentials.employee.id, getGlobal().currentUserId!, this.linkRule);
+  }
+
+  ensureSender(employeeId: number, fullName: string) {
+    if (employeeId === this.credentials?.employee.id) return;
+    const userId = buildCorpUserId(employeeId);
+    let global = getGlobal();
+    if (global.users.byId[userId]) return;
+
+    global = updateUsers(global, { [userId]: buildCorpUser(employeeId, fullName) });
+    setGlobal(global);
+  }
+
+  // Pages fetched by the provider join the cache when they touch it, so Telegram syncs cannot drop them
+  mergeFetched(serverChatId: number, list: CorpMessage[], anchorId?: number) {
+    const known = this.messagesByChat[serverChatId];
+    if (!known || !list.length) return;
+    const isAdjacent = anchorId === undefined || known.some(({ id }) => id === anchorId);
+    if (!isAdjacent) return;
+
+    this.mergeMessages(serverChatId, list.filter((dto) => !dto.isDeleted));
+    this.snapshot = undefined;
+  }
+
+  // ---- config, chats & history ----
+
+  private async loadConfig() {
+    const credentials = this.credentials;
+    if (!credentials) return;
+    const epoch = this.epoch;
+
+    try {
+      const config = await fetchCorpConfig(credentials.server, credentials.token);
+      if (epoch !== this.epoch || !config?.jiraBaseUrl || !config.jiraKeyPattern) return;
+      this.linkRule = { baseUrl: config.jiraBaseUrl, pattern: new RegExp(config.jiraKeyPattern, 'g') };
+      this.snapshot = undefined;
+      this.relinkLoadedMessages();
+    } catch (err) {
+      // An old server has no config: messages keep plain text
+      if (epoch === this.epoch) this.handleFailure(err);
+    }
+  }
+
+  // Messages built before the config arrived get their issue links now
+  private relinkLoadedMessages() {
+    const actions = getActions();
+    const global = getGlobal();
+    Object.values(this.messagesByChat).forEach((list) => {
+      list.forEach((dto) => {
+        if (!dto.text) return;
+        const message = this.buildMessage(dto);
+        if (!message || !selectChatMessage(global, message.chatId, dto.id)) return;
+        actions.apiUpdate({
+          '@type': 'updateMessage', chatId: message.chatId, id: dto.id, message: { content: message.content },
+        });
+      });
+    });
+  }
 
   async loadChats() {
     const credentials = this.credentials;
@@ -265,12 +392,14 @@ class CorpEngine {
     const goneChatIds = this.chats.filter((chat) => !ids.has(chat.id)).map((chat) => buildCorpChatId(chat.id));
     const changedChatIds = this.chats.filter((old) => {
       const chat = chats.find(({ id }) => id === old.id);
-      return chat && (chat.title !== old.title || chat.canPost !== old.canPost || chat.kind !== old.kind);
+      return chat && (chat.title !== old.title || chat.canPost !== old.canPost || chat.kind !== old.kind
+        || chat.isAdmin !== old.isAdmin);
     }).map((chat) => buildCorpChatId(chat.id));
 
     Object.keys(this.messagesByChat).map(Number).filter((id) => !ids.has(id)).forEach((id) => {
       delete this.messagesByChat[id];
     });
+    const isInitial = !this.areChatsLoaded;
     this.chats = chats;
     this.areChatsLoaded = true;
 
@@ -282,43 +411,61 @@ class CorpEngine {
       setGlobal(global);
     }
     this.commit();
+    if (!isInitial) this.applyChatStates(chats);
 
     chats.filter((chat) => !this.messagesByChat[chat.id]).forEach((chat) => {
-      void this.loadHistory(chat.id, HISTORY_LIMIT);
+      void this.loadHistory(chat.id);
     });
   }
 
-  private async loadHistory(chatId: number, limit: number) {
+  // Read marks, pins and member counts of chats that are already in global state
+  private applyChatStates(chats: CorpChatInfo[]) {
+    let global = getGlobal();
+    chats.forEach((chat) => {
+      const chatId = buildCorpChatId(chat.id);
+      if (!global.chats.byId[chatId]) return;
+      if (chat.memberCount !== undefined) global = updateChat(global, chatId, { membersCount: chat.memberCount });
+      const readState = selectThreadReadState(global, chatId, MAIN_THREAD_ID);
+      if (chat.readMaxId && readState && (readState.lastReadOutboxMessageId ?? 0) < chat.readMaxId) {
+        global = updateThreadReadState(global, chatId, MAIN_THREAD_ID, { lastReadOutboxMessageId: chat.readMaxId });
+      }
+    });
+    setGlobal(global);
+
+    chats.forEach((chat) => {
+      if (chat.pinnedIds) this.applyPins(chat.id, chat.pinnedIds);
+    });
+  }
+
+  private async loadHistory(chatId: number) {
     const credentials = this.credentials;
     if (!credentials) return;
     const epoch = this.epoch;
 
     try {
-      const list = await fetchCorpMessages(credentials.server, credentials.token, chatId, 0, limit);
-      if (epoch !== this.epoch || !this.chats.some((chat) => chat.id === chatId)) return;
-      this.mergeMessages(chatId, list);
-      this.canLoadOlder[chatId] = limit < HISTORY_MAX && list.length >= limit;
+      const list = await fetchCorpMessages(credentials.server, credentials.token, chatId, { limit: HISTORY_LIMIT });
+      if (epoch !== this.epoch || !this.getChatInfo(chatId)) return;
+      this.messagesByChat[chatId] ||= [];
+      this.mergeMessages(chatId, list.filter((dto) => !dto.isDeleted));
       this.commit();
     } catch (err) {
       if (epoch === this.epoch) this.handleFailure(err);
     }
   }
 
-  // The API has no "before id" paging: the only way further back is a bigger "latest N" page
-  loadOlder(serverChatId: number) {
-    if (!this.canLoadOlder[serverChatId] || this.loadingOlder.has(serverChatId)) return;
-    this.loadingOlder.add(serverChatId);
-    this.canLoadOlder[serverChatId] = false;
-    void this.loadHistory(serverChatId, HISTORY_MAX).finally(() => this.loadingOlder.delete(serverChatId));
-  }
-
   private mergeMessages(chatId: number, incoming: CorpMessage[]) {
     const byId = new Map<number, CorpMessage>();
     (this.messagesByChat[chatId] || []).forEach((dto) => byId.set(dto.id, dto));
-    incoming.forEach((dto) => {
-      if (!byId.has(dto.id)) byId.set(dto.id, dto);
-    });
+    incoming.forEach((dto) => byId.set(dto.id, dto));
     this.messagesByChat[chatId] = [...byId.values()].sort((a, b) => a.id - b.id);
+  }
+
+  private updateCached(chatId: number, messageId: number, update: Partial<CorpMessage>) {
+    const list = this.messagesByChat[chatId];
+    const index = list?.findIndex(({ id }) => id === messageId) ?? -1;
+    if (index === -1) return;
+    list[index] = { ...list[index], ...update };
+    this.snapshot = undefined;
   }
 
   private async resync() {
@@ -326,6 +473,7 @@ class CorpEngine {
     if (!credentials || this.isResyncing) return;
     this.isResyncing = true;
     const epoch = this.epoch;
+    const initialSince = new Date(this.sessionStartedAt - CHANGES_OVERLAP).toISOString();
 
     try {
       for (const chat of this.chats) {
@@ -333,12 +481,28 @@ class CorpEngine {
           const known = this.messagesByChat[chat.id];
           if (!known) break;
           const lastId = known.length ? known[known.length - 1].id : 0;
-          const list = await fetchCorpMessages(credentials.server, credentials.token, chat.id, lastId, HISTORY_LIMIT);
+          const list = await fetchCorpMessages(credentials.server, credentials.token, chat.id, {
+            afterId: lastId, limit: HISTORY_LIMIT,
+          });
           if (epoch !== this.epoch) return;
           list.forEach((dto) => this.applyLive(dto));
           if (list.length < HISTORY_LIMIT) break;
         }
+
+        if (this.messagesByChat[chat.id]) {
+          const since = this.changesSince[chat.id] || initialSince;
+          const changes = await fetchCorpChanges(credentials.server, credentials.token, chat.id, since).catch((err) => {
+            if (isCorpUnauthorized(err)) throw err;
+            // An old server has no change feed
+            return undefined;
+          });
+          if (epoch !== this.epoch) return;
+          changes?.edited.forEach((dto) => this.applyEdited(dto));
+          if (changes?.deletedIds.length) this.applyDeleted(chat.id, changes.deletedIds);
+          if (changes?.serverTime) this.changesSince[chat.id] = changes.serverTime;
+        }
       }
+      void this.loadChats();
     } catch (err) {
       if (epoch === this.epoch) this.handleFailure(err);
     } finally {
@@ -346,11 +510,12 @@ class CorpEngine {
     }
   }
 
+  // ---- live events ----
+
   // A message from the hub, a resync page or our own POST response (`localId` is the pending bubble to resolve)
   applyLive(dto: CorpMessage, localId?: number) {
-    const chat = this.chats.find(({ id }) => id === dto.chatId);
     const list = this.messagesByChat[dto.chatId];
-    if (!chat || !list) return;
+    if (!this.getChatInfo(dto.chatId) || !list || dto.isDeleted) return;
     const isKnown = list.some(({ id }) => id === dto.id);
     if (isKnown && localId === undefined) return;
 
@@ -358,7 +523,143 @@ class CorpEngine {
       this.mergeMessages(dto.chatId, [dto]);
       this.snapshot = undefined;
     }
-    publishCorpMessage(dto, chat, this.credentials!.employee.id, localId);
+    this.publishMessage(dto, localId);
+  }
+
+  private publishMessage(dto: CorpMessage, localId?: number) {
+    const message = this.buildMessage(dto);
+    if (!message) return;
+    const { chatId } = message;
+    const global = getGlobal();
+    const actions = getActions();
+
+    if (dto.senderId === this.employeeId) {
+      // The POST answer names its bubble; a hub echo that wins the race matches it by `clientId`
+      const echoedLocalId = dto.clientId ? this.pendingByClientId.get(dto.clientId) : undefined;
+      if (dto.clientId) this.pendingByClientId.delete(dto.clientId);
+      const candidateId = localId ?? echoedLocalId;
+      const pendingId = candidateId !== undefined && selectChatMessage(global, chatId, candidateId)
+        ? candidateId
+        : undefined;
+      if (pendingId !== undefined) {
+        // `updateMessageSendSucceeded` merges over the pending bubble, so its sending state is cleared explicitly
+        actions.apiUpdate({
+          '@type': 'updateMessageSendSucceeded',
+          chatId,
+          localId: pendingId,
+          message: { ...message, sendingState: undefined },
+        });
+        return;
+      }
+    }
+
+    if (selectChatMessage(global, chatId, dto.id)) return;
+
+    actions.apiUpdate({
+      '@type': 'newMessage', chatId, id: dto.id, message,
+    });
+  }
+
+  registerPending(clientId: string, localId: number) {
+    this.pendingByClientId.set(clientId, localId);
+  }
+
+  forgetPending(clientId: string) {
+    this.pendingByClientId.delete(clientId);
+  }
+
+  applyEdited(dto: CorpMessage) {
+    if (dto.isDeleted) {
+      this.applyDeleted(dto.chatId, [dto.id]);
+      return;
+    }
+    this.updateCached(dto.chatId, dto.id, dto);
+    const message = this.buildMessage(dto);
+    if (!message || !selectChatMessage(getGlobal(), message.chatId, dto.id)) return;
+
+    getActions().apiUpdate({
+      '@type': 'updateMessage', chatId: message.chatId, id: dto.id, message, isFull: true,
+    });
+  }
+
+  applyDeleted(serverChatId: number, ids: number[]) {
+    const list = this.messagesByChat[serverChatId];
+    if (list) {
+      this.messagesByChat[serverChatId] = list.filter(({ id }) => !ids.includes(id));
+      this.snapshot = undefined;
+    }
+
+    getActions().apiUpdate({ '@type': 'deleteMessages', ids, chatId: buildCorpChatId(serverChatId) });
+  }
+
+  applyReactions(serverChatId: number, messageId: number, reactions: CorpReaction[]) {
+    this.updateCached(serverChatId, messageId, { reactions });
+    const chatId = buildCorpChatId(serverChatId);
+    if (!selectChatMessage(getGlobal(), chatId, messageId)) return;
+
+    getActions().apiUpdate({
+      '@type': 'updateMessageReactions',
+      chatId,
+      id: messageId,
+      reactions: buildCorpReactions(reactions, this.employeeId!),
+    });
+  }
+
+  applyPins(serverChatId: number, pinnedIds: number[]) {
+    const chatId = buildCorpChatId(serverChatId);
+    const chat = this.getChatInfo(serverChatId);
+    if (chat) chat.pinnedIds = pinnedIds;
+    (this.messagesByChat[serverChatId] || []).forEach((dto) => {
+      const isPinned = pinnedIds.includes(dto.id);
+      if (Boolean(dto.isPinned) !== isPinned) this.updateCached(serverChatId, dto.id, { isPinned });
+    });
+
+    let global = getGlobal();
+    const current = selectThreadLocalStateParam(global, chatId, MAIN_THREAD_ID, 'pinnedIds') || [];
+    current.filter((id) => !pinnedIds.includes(id)).forEach((id) => {
+      global = updatePinnedFlag(global, chatId, id, false);
+    });
+    pinnedIds.forEach((id) => {
+      global = updatePinnedFlag(global, chatId, id, true);
+    });
+    global = replaceThreadLocalStateParam(
+      global, chatId, MAIN_THREAD_ID, 'pinnedIds', pinnedIds.slice().sort((a, b) => b - a),
+    );
+    setGlobal(global);
+  }
+
+  applyRead(serverChatId: number, employeeId: number, maxId: number) {
+    const chatId = buildCorpChatId(serverChatId);
+    let global = getGlobal();
+    const readState = selectThreadReadState(global, chatId, MAIN_THREAD_ID);
+    if (!readState) return;
+
+    if (employeeId === this.employeeId) {
+      // Read on another device of the same employee
+      if ((readState.lastReadInboxMessageId ?? 0) >= maxId) return;
+      const list = this.messagesByChat[serverChatId] || [];
+      const unreadCount = list.filter((dto) => dto.id > maxId && dto.senderId !== employeeId).length;
+      global = updateThreadReadState(global, chatId, MAIN_THREAD_ID, { lastReadInboxMessageId: maxId, unreadCount });
+    } else {
+      if ((readState.lastReadOutboxMessageId ?? 0) >= maxId) return;
+      global = updateThreadReadState(global, chatId, MAIN_THREAD_ID, { lastReadOutboxMessageId: maxId });
+    }
+    setGlobal(global);
+  }
+
+  private applyTyping({
+    chatId: serverChatId, employeeId, fullName, action,
+  }: HubTyping) {
+    if (employeeId === this.employeeId || !this.getChatInfo(serverChatId)) return;
+    this.ensureSender(employeeId, fullName);
+    const type = TYPING_ACTIONS[action];
+
+    getActions().apiUpdate({
+      '@type': 'updateChatTypingStatus',
+      id: buildCorpChatId(serverChatId),
+      peerId: buildCorpUserId(employeeId),
+      typingStatus: type ? { type, timestamp: getServerTime() } : undefined,
+    });
   }
 
   // ---- realtime hub ----
@@ -383,15 +684,26 @@ class CorpEngine {
       .build();
     this.connection = connection;
     const isCurrent = () => this.connection === connection && this.isHubWanted;
+    const on = <T>(event: string, handler: (payload: T) => void) => {
+      connection.on(event, (payload: T) => {
+        if (isCurrent()) handler(payload);
+      });
+    };
 
-    connection.on('message', (dto: CorpMessage) => {
-      if (isCurrent()) this.applyLive(dto);
-    });
-    connection.on('chats_changed', () => {
-      if (isCurrent()) void this.loadChats();
-    });
-    connection.on('logout', () => {
-      if (!isCurrent()) return;
+    on<CorpMessage>('message', (dto) => this.applyLive(dto));
+    on<CorpMessage>('message_edited', (dto) => this.applyEdited(dto));
+    on<{ chatId: number; ids: number[] }>('messages_deleted', ({ chatId, ids }) => this.applyDeleted(chatId, ids));
+    on<{ chatId: number; messageId: number; reactions: CorpReaction[] }>('reactions', ({
+      chatId, messageId, reactions,
+    }) => this.applyReactions(chatId, messageId, reactions));
+    on<{ chatId: number; pinnedIds: number[] }>('pins', ({ chatId, pinnedIds }) => this.applyPins(chatId, pinnedIds));
+    on<{ chatId: number; employeeId: number; maxId: number }>('read', ({
+      chatId, employeeId, maxId,
+    }) => this.applyRead(chatId, employeeId, maxId));
+    on<HubTyping>('typing', (typing) => this.applyTyping(typing));
+    on<CorpWakeUp>('wakeup', (wakeUp) => this.onWakeUp?.(wakeUp));
+    on<unknown>('chats_changed', () => void this.loadChats());
+    on<unknown>('logout', () => {
       this.isHubWanted = false;
       this.revoke();
     });
@@ -466,52 +778,24 @@ class CorpEngine {
 
 export const corpEngine = new CorpEngine();
 
-export function publishCorpMessage(dto: CorpMessage, chat: CorpChatInfo, employeeId: number, localId?: number) {
-  let global = getGlobal();
-  const chatId = buildCorpChatId(chat.id);
-  const actions = getActions();
-  // `updateMessageSendSucceeded` merges over the pending bubble, so its sending state is cleared explicitly
-  const message: ApiMessage = {
-    ...buildCorpMessage(dto, chat, employeeId, global.currentUserId!),
-    sendingState: undefined,
+function updatePinnedFlag<T extends GlobalState>(global: T, chatId: string, messageId: number, isPinned: boolean): T {
+  const message = selectChatMessage(global, chatId, messageId);
+  if (!message || Boolean(message.isPinned) === isPinned) return global;
+  const chatMessages = global.messages.byChatId[chatId];
+
+  return {
+    ...global,
+    messages: {
+      ...global.messages,
+      byChatId: {
+        ...global.messages.byChatId,
+        [chatId]: {
+          ...chatMessages,
+          byId: { ...chatMessages.byId, [messageId]: { ...message, isPinned: isPinned || undefined } },
+        },
+      },
+    },
   };
-  const isOwn = dto.senderId === employeeId;
-
-  if (isOwn) {
-    // The POST answer names its bubble; a hub echo that wins the race matches it by text
-    const pendingId = localId !== undefined && selectChatMessage(global, chatId, localId)
-      ? localId
-      : findPendingMessage(global, chatId, dto.text)?.id;
-    if (pendingId !== undefined) {
-      actions.apiUpdate({
-        '@type': 'updateMessageSendSucceeded', chatId, localId: pendingId, message,
-      });
-      return;
-    }
-  }
-
-  if (selectChatMessage(global, chatId, dto.id)) return;
-
-  if (!isOwn) {
-    const userId = buildCorpUserId(dto.senderId);
-    if (!global.users.byId[userId]) {
-      global = updateUsers(global, { [userId]: buildCorpUser(dto.senderId, dto.senderName) });
-      setGlobal(global);
-    }
-  }
-
-  actions.apiUpdate({
-    '@type': 'newMessage', chatId, id: dto.id, message,
-  });
-}
-
-function findPendingMessage(global: GlobalState, chatId: string, text: string): ApiMessage | undefined {
-  const byId = global.messages.byChatId[chatId]?.byId;
-  if (!byId) return undefined;
-
-  return Object.values(byId)
-    .filter((message) => message.sendingState === 'messageSendingStatePending' && message.content.text?.text === text)
-    .sort((a, b) => a.id - b.id)[0];
 }
 
 function closeCorpChats(chatIds?: string[]) {
@@ -524,7 +808,9 @@ function closeCorpChats(chatIds?: string[]) {
   });
 }
 
-function removeCorpEverywhere() {
+function removeCorpEverywhere(isMaster: boolean) {
+  clearCorpMedia();
+  if (!isMaster) return;
   closeCorpChats();
   let global = getGlobal();
   global = removeCorpData(global);

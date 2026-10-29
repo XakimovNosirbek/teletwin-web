@@ -50,3 +50,29 @@ export function isCorpBare(value: number) {
 export function isCorpFolderId(folderId?: number) {
   return folderId === CORP_FOLDER_ID;
 }
+
+// Corp media ids carry the server file ids: `teletwin-corp:<fileId>` or `teletwin-corp:<fileId>~<thumbFileId>`.
+// Stock helpers turn them into media hashes such as `phototeletwin-corp:f_1?size=x` or `documentteletwin-corp:f_1`,
+// which the provider downloads from the corp server instead of Telegram.
+const CORP_MEDIA_PREFIX = 'teletwin-corp:';
+const CORP_THUMB_SEPARATOR = '~';
+const RE_CORP_MEDIA_HASH = /^(?:progressive\/)?(?:photo|document)teletwin-corp:([^?~]+)(?:~([^?]+))?(?:\?(.*))?$/;
+
+export function buildCorpMediaId(fileId: string, thumbFileId?: string) {
+  return `${CORP_MEDIA_PREFIX}${fileId}${thumbFileId ? `${CORP_THUMB_SEPARATOR}${thumbFileId}` : ''}`;
+}
+
+export function hasCorpMediaReference(value: string) {
+  return value.includes(CORP_MEDIA_PREFIX);
+}
+
+export function parseCorpMediaHash(hash: string) {
+  const match = hash.match(RE_CORP_MEDIA_HASH);
+  if (!match) return undefined;
+
+  return { fileId: match[1], thumbFileId: match[2] as string | undefined, query: match[3] || '' };
+}
+
+export function getEmployeeId(corpUserId: string) {
+  return Number(corpUserId) - CORP_BARE_BASE;
+}

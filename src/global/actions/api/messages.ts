@@ -70,7 +70,6 @@ import { debounce, onTickEnd, rafPromise } from '../../../util/schedulers';
 import { getServerTime } from '../../../util/serverTime';
 import { callApi, cancelApiProgress } from '../../../api/gramjs';
 import { isCorpChatId } from '../../../teletwin/ids';
-import { fetchCorpViewportMessages, sendCorpText } from '../../../teletwin/messages';
 import {
   getIsSavedDialog,
   getUserFullName,
@@ -527,12 +526,6 @@ addActionHandler('sendMessage', async (global, actions, payload): Promise<void> 
     chatId = storyPeerId!;
     threadId = MAIN_THREAD_ID;
     type = 'thread';
-  }
-
-  // TeleTwin: corp chats are served by the TeleTwin server, text only
-  if (isCorpChatId(chatId)) {
-    if (!payload.scheduledAt) sendCorpText(chatId, payload);
-    return;
   }
 
   payload = omit(payload, ['tabId']);
@@ -2297,16 +2290,14 @@ async function loadViewportMessages<T extends GlobalState>(
   const isSavedDialog = getIsSavedDialog(chatId, threadId, currentUserId);
   const realChatId = isSavedDialog ? String(threadId) : chatId;
 
-  const result = isCorpChatId(chatId)
-    ? fetchCorpViewportMessages(global, chatId, offsetId, addOffset, sliceSize)
-    : await callApi('fetchMessages', {
-      chat: selectChat(global, realChatId)!,
-      offsetId,
-      addOffset,
-      limit: sliceSize,
-      threadId,
-      isSavedDialog,
-    });
+  const result = await callApi('fetchMessages', {
+    chat: selectChat(global, realChatId)!,
+    offsetId,
+    addOffset,
+    limit: sliceSize,
+    threadId,
+    isSavedDialog,
+  });
 
   if (!result) {
     return;
@@ -3263,8 +3254,9 @@ addActionHandler('openChatOrTopicWithReplyInDraft', (global, actions, payload): 
 
 addActionHandler('setForwardChatOrTopic', async (global, actions, payload): Promise<void> => {
   const { chatId, topicId, tabId = getCurrentTabId() } = payload;
-  if (isCorpChatId(chatId)) {
-    actions.showNotification({ message: { key: 'TeleTwinForwardBlocked' }, tabId });
+  // TeleTwin: corp messages are forwarded only to corp chats
+  if (isCorpChatId(selectTabState(global, tabId).forwardMessages.fromChatId) && !isCorpChatId(chatId)) {
+    actions.showNotification({ message: { key: 'TeleTwinForwardOutBlocked' }, tabId });
     return;
   }
   const user = selectUser(global, chatId);
