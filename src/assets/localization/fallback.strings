@@ -4511,3 +4511,17 @@
 "SettingsKeywordsLastSeen" = "online, last seen, status";
 "SettingsKeywordsLogOut" = "log out, sign out, exit";
 "SettingsSearchEmpty" = "Start typing to find a setting";
+"TeleTwinMenuItem" = "Korxona";
+"TeleTwinFolderTitle" = "Korxona";
+"TeleTwinLoginTitle" = "Korxona hisobiga kirish";
+"TeleTwinServer" = "Server";
+"TeleTwinLogin" = "Login";
+"TeleTwinPassword" = "Parol";
+"TeleTwinSignIn" = "Kirish";
+"TeleTwinCancel" = "Bekor qilish";
+"TeleTwinLogOut" = "Chiqish";
+"TeleTwinErrorCredentials" = "Login yoki parol noto'g'ri, yoki kirish huquqi o'chirilgan.";
+"TeleTwinErrorNetwork" = "Serverga ulanib bo'lmadi. Internetni tekshiring.";
+"TeleTwinErrorRejected" = "Server so'rovni rad etdi. Birozdan keyin urinib ko'ring.";
+"TeleTwinRevoked" = "Korporativ kirish o'chirildi.";
+"TeleTwinForwardBlocked" = "Telegram xabarlarini korxona chatlariga yuborib bo'lmaydi.";

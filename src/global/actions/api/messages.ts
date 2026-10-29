@@ -69,6 +69,8 @@ import { formatStarsAsText } from '../../../util/localization/format';
 import { debounce, onTickEnd, rafPromise } from '../../../util/schedulers';
 import { getServerTime } from '../../../util/serverTime';
 import { callApi, cancelApiProgress } from '../../../api/gramjs';
+import { isCorpChatId } from '../../../teletwin/ids';
+import { fetchCorpViewportMessages, sendCorpText } from '../../../teletwin/messages';
 import {
   getIsSavedDialog,
   getUserFullName,
@@ -525,6 +527,12 @@ addActionHandler('sendMessage', async (global, actions, payload): Promise<void> 
     chatId = storyPeerId!;
     threadId = MAIN_THREAD_ID;
     type = 'thread';
+  }
+
+  // TeleTwin: corp chats are served by the TeleTwin server, text only
+  if (isCorpChatId(chatId)) {
+    if (!payload.scheduledAt) sendCorpText(chatId, payload);
+    return;
   }
 
   payload = omit(payload, ['tabId']);
@@ -1730,6 +1738,8 @@ addActionHandler('markMessagesRead', async (global, actions, payload): Promise<v
 
 addActionHandler('loadWebPagePreview', async (global, actions, payload): Promise<void> => {
   const { text, tabId = getCurrentTabId() } = payload;
+  // TeleTwin: corp drafts are not sent to Telegram for link previews
+  if (isCorpChatId(selectCurrentMessageList(global, tabId)?.chatId)) return;
 
   const webPagePreview = await callApi('fetchWebPagePreview', { text });
 
@@ -2287,14 +2297,16 @@ async function loadViewportMessages<T extends GlobalState>(
   const isSavedDialog = getIsSavedDialog(chatId, threadId, currentUserId);
   const realChatId = isSavedDialog ? String(threadId) : chatId;
 
-  const result = await callApi('fetchMessages', {
-    chat: selectChat(global, realChatId)!,
-    offsetId,
-    addOffset,
-    limit: sliceSize,
-    threadId,
-    isSavedDialog,
-  });
+  const result = isCorpChatId(chatId)
+    ? fetchCorpViewportMessages(global, chatId, offsetId, addOffset, sliceSize)
+    : await callApi('fetchMessages', {
+      chat: selectChat(global, realChatId)!,
+      offsetId,
+      addOffset,
+      limit: sliceSize,
+      threadId,
+      isSavedDialog,
+    });
 
   if (!result) {
     return;
@@ -3251,6 +3263,10 @@ addActionHandler('openChatOrTopicWithReplyInDraft', (global, actions, payload): 
 
 addActionHandler('setForwardChatOrTopic', async (global, actions, payload): Promise<void> => {
   const { chatId, topicId, tabId = getCurrentTabId() } = payload;
+  if (isCorpChatId(chatId)) {
+    actions.showNotification({ message: { key: 'TeleTwinForwardBlocked' }, tabId });
+    return;
+  }
   const user = selectUser(global, chatId);
   const isSelectForwardsContainVoiceMessages = selectForwardsContainVoiceMessages(global, tabId);
   if (isSelectForwardsContainVoiceMessages && user && !await checkIfVoiceMessagesAllowed(global, user, chatId)) {

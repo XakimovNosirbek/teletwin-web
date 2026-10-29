@@ -51,6 +51,7 @@ import { hasStoredSession } from '../util/sessions';
 import { getSystemTheme } from '../util/systemTheme';
 import { getDefaultPatternColor } from '../util/wallpaper';
 import { migrateLegacyWallpaperBlobs, prefetchWallpaperUrl } from '../util/wallpaperStorage';
+import { hasCorpData, removeCorpData } from '../teletwin/state';
 import { buildPageAudioById } from './helpers/buildPageAudioById';
 import { selectSharedSettings } from './selectors/sharedState';
 import { selectThreadInfo } from './selectors/threads';
@@ -529,6 +530,9 @@ export function forceUpdateCache() {
 }
 
 function reduceGlobal<T extends GlobalState>(global: T) {
+  // TeleTwin: corp chats must not outlive a revoke offline, so they are never persisted
+  if (hasCorpData(global)) global = removeCorpData(global);
+
   const reducedGlobal: GlobalState = {
     ...INITIAL_GLOBAL_STATE,
     ...pick(global, [

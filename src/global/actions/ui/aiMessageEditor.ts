@@ -1,6 +1,7 @@
 import type { ActionReturnType } from '../../types';
 
 import { getCurrentTabId } from '../../../util/establishMultitabRole';
+import { isCorpChatId } from '../../../teletwin/ids';
 import { hasAiEditorContent } from '../../helpers/aiMessageEditor';
 import { addActionHandler } from '../../index';
 import { updateTabState } from '../../reducers/tabs';
@@ -14,6 +15,9 @@ addActionHandler('openAiMessageEditorModal', (global, actions, payload): ActionR
     chatId, threadId, content, initialTab = 'style', isFromAttachment, isEditing,
     tabId = getCurrentTabId(),
   } = payload;
+
+  // TeleTwin: corp drafts are never sent to Telegram's AI services
+  if (isCorpChatId(chatId)) return undefined;
 
   const defaultTranslationLanguage = selectTranslationLanguage(global);
   const hasSource = hasAiEditorContent(content);

@@ -34,6 +34,7 @@ import { onBeforeUnload } from './util/schedulers';
 import initTauriApi from './util/tauri/initTauriApi';
 import setupTauriListeners from './util/tauri/setupTauriListeners';
 import updateWebmanifest from './util/updateWebmanifest';
+import { initTeleTwin } from './teletwin';
 
 import App from './components/App';
 
@@ -77,6 +78,7 @@ async function init() {
 
   await initGlobal();
   getActions().init();
+  initTeleTwin();
 
   initAutolock();
 

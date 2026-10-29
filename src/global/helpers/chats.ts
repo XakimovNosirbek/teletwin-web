@@ -27,6 +27,7 @@ import {
 import { getPeerIdDividend, isUserId } from '../../util/entities/ids';
 import { formatDateTime, secondsToDate } from '../../util/localization/dateFormat';
 import { getServerTime } from '../../util/serverTime';
+import { isCorpChatId } from '../../teletwin/ids';
 import { selectIsChatRestricted } from '../selectors';
 import { getGlobal } from '..';
 import { isSystemBot } from './bots';
@@ -227,6 +228,11 @@ export function getAllowedAttachmentOptions(
       canSendDocuments: false,
       canAttachToDoLists: false,
     };
+  }
+
+  // TeleTwin: the corp server accepts plain text only
+  if (isCorpChatId(chat.id)) {
+    return { ...getAllowedAttachmentOptions(), canSendPlainText: getCanPostInChat(chat) };
   }
 
   const isAdmin = isChatAdmin(chat);

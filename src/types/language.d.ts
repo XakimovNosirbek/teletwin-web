@@ -3376,6 +3376,20 @@ export interface LangPair {
   'SettingsKeywordsLastSeen': undefined;
   'SettingsKeywordsLogOut': undefined;
   'SettingsSearchEmpty': undefined;
+  'TeleTwinMenuItem': undefined;
+  'TeleTwinFolderTitle': undefined;
+  'TeleTwinLoginTitle': undefined;
+  'TeleTwinServer': undefined;
+  'TeleTwinLogin': undefined;
+  'TeleTwinPassword': undefined;
+  'TeleTwinSignIn': undefined;
+  'TeleTwinCancel': undefined;
+  'TeleTwinLogOut': undefined;
+  'TeleTwinErrorCredentials': undefined;
+  'TeleTwinErrorNetwork': undefined;
+  'TeleTwinErrorRejected': undefined;
+  'TeleTwinRevoked': undefined;
+  'TeleTwinForwardBlocked': undefined;
 }
 
 export interface LangPairWithVariables<V = LangVariable> {

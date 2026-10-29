@@ -16,6 +16,7 @@ import { ALL_FOLDER_ID } from '../config';
 import { selectCanShareFolder } from '../global/selectors';
 import { MEMO_EMPTY_ARRAY } from '../util/memo';
 import { renderTextWithEntities } from '../components/common/helpers/renderTextWithEntities';
+import { isCorpFolderId } from '../teletwin/ids';
 import useAppLayout from './useAppLayout';
 import { useFolderManagerForUnreadChatsByFolder, useFolderManagerForUnreadCounters } from './useFolderManager';
 import useLang from './useLang';
@@ -112,11 +113,13 @@ const useFolderTabs = (params: Params) => {
 
     return displayedFolders.map((folder, i) => {
       const { id, title } = folder;
-      const isBlocked = id !== ALL_FOLDER_ID && i > maxFolders - 1;
+      const isCorpFolder = isCorpFolderId(id);
+      const isBlocked = id !== ALL_FOLDER_ID && !isCorpFolder && i > maxFolders - 1;
       const canShareFolder = selectCanShareFolder(getGlobal(), id);
       const contextActions: MenuItemContextAction[] = [];
 
-      if (!isReadOnly) {
+      // TeleTwin: the local corp folder cannot be shared, edited or deleted
+      if (!isReadOnly && !isCorpFolder) {
         if (canShareFolder) {
           contextActions.push({
             title: lang('FilterShare'),
