@@ -4537,6 +4537,8 @@
 "TeleTwinRejected" = "So'rovingiz rad etildi. Administratorga murojaat qiling.";
 "TeleTwinBack" = "Orqaga";
 "TeleTwinTelegramLogOut" = "Telegram akkauntidan chiqish";
+"TeleTwinDirectPick" = "Xodimga yozish";
+"TeleTwinDirectPickTitle" = "Kimga yozamiz?";
 "TeleTwinWakeUp" = "🦆 Uyg'otish";
 "TeleTwinWakeUpPick" = "🦆 Uyg'otish…";
 "TeleTwinWakeUpPickTitle" = "Kimni uyg'otamiz?";

@@ -1,6 +1,6 @@
 import { memo } from '../../lib/teact/teact';
 
-import { getCorpCredentials, logoutFromCorp } from '../index';
+import { getCorpCredentials, logoutFromCorp, setDirectPickerOpen } from '../index';
 import { getIsWakeUpMuted, toggleWakeUpSound } from '../wakeup';
 
 import useDerivedState from '../../hooks/useDerivedState';
@@ -13,7 +13,7 @@ import NestedMenuItem from '../../components/ui/NestedMenuItem';
 const RE_URL_SCHEME = /^https?:\/\//;
 const RE_TRAILING_SLASH = /\/$/;
 
-// "Korxona" entry of the left main menu: the corp session, the wake-up sound switch and "Chiqish"
+// "Korxona" entry of the left main menu: the corp session, "Xodimga yozish", the wake-up sound switch and "Chiqish"
 const CorpMenuItem = () => {
   const lang = useLang();
   const credentials = useDerivedState(getCorpCredentials);
@@ -21,6 +21,10 @@ const CorpMenuItem = () => {
 
   const handleLogout = useLastCallback(() => {
     logoutFromCorp();
+  });
+
+  const handleWriteToEmployee = useLastCallback(() => {
+    setDirectPickerOpen(true);
   });
 
   const handleToggleSound = useLastCallback(() => {
@@ -41,6 +45,9 @@ const CorpMenuItem = () => {
           </MenuItem>
           <MenuItem icon="web" disabled withWrap>
             {server.replace(RE_URL_SCHEME, '').replace(RE_TRAILING_SLASH, '')}
+          </MenuItem>
+          <MenuItem icon="new-chat-filled" onClick={handleWriteToEmployee}>
+            {lang('TeleTwinDirectPick')}
           </MenuItem>
           <MenuItem icon={isWakeUpMuted ? 'mute' : 'unmute'} onClick={handleToggleSound}>
             {lang('TeleTwinWakeUpSound')}

@@ -13,7 +13,23 @@ const RE_DIGITS = /^\d+$/;
 // Telegram folder ids are 2..255, so the corp folder id stays local-only (same value as `Corp::kCorpFilterId`)
 export const CORP_FOLDER_ID = 0x40000000;
 
+// Direct chats render as private chats with the other employee, so their chat id is that employee's user id
+const directPeerByChat = new Map<number, number>();
+const directChatByPeer = new Map<number, number>();
+
+export function registerCorpDirectChat(serverChatId: number, peerEmployeeId: number) {
+  directPeerByChat.set(serverChatId, peerEmployeeId);
+  directChatByPeer.set(peerEmployeeId, serverChatId);
+}
+
+export function getCorpDirectChatId(peerEmployeeId: number) {
+  return directChatByPeer.get(peerEmployeeId);
+}
+
 export function buildCorpChatId(serverChatId: number) {
+  const peerEmployeeId = directPeerByChat.get(serverChatId);
+  if (peerEmployeeId !== undefined) return buildCorpUserId(peerEmployeeId);
+
   return `-${CHANNEL_BASE + CORP_BARE_BASE + serverChatId}`;
 }
 
@@ -22,10 +38,14 @@ export function buildCorpUserId(employeeId: number) {
 }
 
 export function getServerChatId(corpChatId: string) {
+  if (isCorpUserIdValue(corpChatId)) return directChatByPeer.get(getEmployeeId(corpChatId)) ?? 0;
+
   return Number(corpChatId.slice(1)) - CHANNEL_BASE - CORP_BARE_BASE;
 }
 
+// Group and channel ids, and employee ids used as the id of a direct chat
 export function isCorpChatId(id?: string): id is string {
+  if (isCorpUserIdValue(id)) return true;
   if (id?.length !== CORP_ID_LENGTH + 1 || id[0] !== '-') return false;
   const digits = id.slice(1);
   if (!RE_DIGITS.test(digits)) return false;
@@ -34,6 +54,10 @@ export function isCorpChatId(id?: string): id is string {
 }
 
 export function isCorpUserId(id?: string): id is string {
+  return isCorpUserIdValue(id);
+}
+
+function isCorpUserIdValue(id?: string) {
   if (id?.length !== CORP_ID_LENGTH || !RE_DIGITS.test(id)) return false;
 
   return isCorpBare(Number(id));

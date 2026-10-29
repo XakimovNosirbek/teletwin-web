@@ -218,6 +218,20 @@ export function logoutFromTelegram() {
   getActions().signOut({ forceInitApi: true });
 }
 
+const [getDirectPickerOpen, setDirectPickerOpen] = createSignal(false);
+export { getDirectPickerOpen, setDirectPickerOpen };
+
+export async function openDirectChatWith(employeeId: number) {
+  const actions = getActions();
+  try {
+    const chatId = await corpEngine.openDirectChat(employeeId);
+    if (chatId) actions.openChat({ id: chatId, shouldReplaceHistory: true });
+  } catch (err) {
+    corpEngine.handleFailure(err);
+    actions.showNotification({ message: { key: 'TeleTwinErrorNetwork' } });
+  }
+}
+
 export async function wakeUpEmployee(employeeId: number, serverChatId: number | undefined, name: string) {
   const credentials = corpEngine.credentials;
   if (!credentials) return;

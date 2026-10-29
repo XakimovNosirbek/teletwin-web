@@ -3,7 +3,7 @@
 //  - hub: WebSockets only, `access_token` query, `Ready()` after connect, then catch up every loaded chat
 //    with GET messages?afterId=<last id> and GET changes?since=<last sync>
 //  - events: `message`, `message_edited`, `messages_deleted`, `reactions`, `pins`, `read`, `typing`, `wakeup`,
-//    `chats_changed` (reload chats), `logout` (revoke)
+//    `presence`, `chats_changed` (reload chats), `logout` (revoke)
 //  - hub closed -> GET me: 401 -> revoke, otherwise reconnect with backoff 1 s, 2 s, 4 s ... 30 s (reset on connect)
 //  - any API 401 -> revoke
 // The engine keeps the loaded corp history (`messagesByChat`) and re-applies it after Telegram syncs replace
@@ -14,12 +14,12 @@ import { getActions, getGlobal, setGlobal } from '../global';
 
 import type { ApiMessage, ApiTypingStatus } from '../api/types';
 import type { GlobalState } from '../global/types';
-import type { CorpChatInfo, CorpMessage, CorpReaction } from './api';
+import type { CorpChatInfo, CorpMessage, CorpPresence, CorpReaction } from './api';
 import type { CorpLinkRule, CorpSnapshot } from './state';
 import type { CorpCredentials } from './storage';
 import { MAIN_THREAD_ID } from '../api/types';
 
-import { updateChat, updateUsers } from '../global/reducers';
+import { addUserStatuses, updateChat, updateUsers } from '../global/reducers';
 import { replaceThreadLocalStateParam, updateThreadReadState } from '../global/reducers/threads';
 import { selectChatMessage, selectCurrentMessageList } from '../global/selectors';
 import { selectThreadLocalStateParam, selectThreadReadState } from '../global/selectors/threads';
@@ -27,13 +27,16 @@ import { getCurrentTabId } from '../util/establishMultitabRole';
 import { getTranslationFn } from '../util/localization';
 import { getServerTime } from '../util/serverTime';
 import {
-  buildCorpHubUrl, fetchCorpChanges, fetchCorpChats, fetchCorpConfig, fetchCorpMe, fetchCorpMessages,
-  isCorpUnauthorized, logoutCorp,
+  buildCorpHubUrl, fetchCorpChanges, fetchCorpChats, fetchCorpConfig, fetchCorpEmployees, fetchCorpMe,
+  fetchCorpMessages, isCorpUnauthorized, logoutCorp, openCorpDirectChat,
 } from './api';
-import { buildCorpChatId, buildCorpUserId, isCorpChatId } from './ids';
+import {
+  buildCorpChatId, buildCorpUserId, isCorpChatId, registerCorpDirectChat,
+} from './ids';
 import { clearCorpMedia } from './media';
 import {
-  applyCorpSnapshot, buildCorpMessage, buildCorpReactions, buildCorpUser, isCorpSnapshotApplied, removeCorpData,
+  applyCorpSnapshot, buildCorpMessage, buildCorpReactions, buildCorpUser, buildCorpUserStatus, isCorpDirectChat,
+  isCorpSnapshotApplied, removeCorpData,
 } from './state';
 import {
   loadCredentials, loadReadMarks, removeCredentials, saveReadMarks,
@@ -68,6 +71,10 @@ export interface CorpWakeUp {
   fromId: number;
   fromName: string;
   chatId?: number;
+}
+
+interface HubPresence extends CorpPresence {
+  employeeId: number;
 }
 
 interface HubTyping {
@@ -386,12 +393,56 @@ class CorpEngine {
       const chats = await fetchCorpChats(credentials.server, credentials.token);
       if (epoch !== this.epoch) return;
       this.applyChats(chats);
+      void this.loadPresence();
     } catch (err) {
       if (epoch === this.epoch) this.handleFailure(err);
     }
   }
 
+  // Online state of everyone, for the direct chat headers and member lists
+  private async loadPresence() {
+    const credentials = this.credentials;
+    if (!credentials || !this.isSessionActive) return;
+    const epoch = this.epoch;
+
+    try {
+      const employees = await fetchCorpEmployees(credentials.server, credentials.token);
+      if (epoch !== this.epoch) return;
+      employees.forEach((employee) => this.applyPresence({ ...employee, employeeId: employee.id }));
+    } catch (err) {
+      // An old server has no presence
+      if (epoch === this.epoch) this.handleFailure(err);
+    }
+  }
+
+  applyPresence({ employeeId, isOnline, lastSeenAt }: HubPresence) {
+    if (employeeId === this.credentials?.employee.id) return;
+    const status = buildCorpUserStatus({ isOnline, lastSeenAt });
+    if (!status) return;
+
+    let global = getGlobal();
+    global = addUserStatuses(global, { [buildCorpUserId(employeeId)]: status });
+    setGlobal(global);
+  }
+
+  // Opens (or creates) the direct chat with an employee and returns its chat id
+  async openDirectChat(employeeId: number) {
+    const credentials = this.credentials;
+    if (!credentials) return undefined;
+
+    const chat = await openCorpDirectChat(credentials.server, credentials.token, employeeId);
+    if (this.isSessionActive && !this.chats.some(({ id }) => id === chat.id)) {
+      this.applyChats([...this.chats, chat]);
+    }
+    if (isCorpDirectChat(chat)) registerCorpDirectChat(chat.id, chat.peerId);
+
+    return buildCorpChatId(chat.id);
+  }
+
   private applyChats(chats: CorpChatInfo[]) {
+    chats.forEach((chat) => {
+      if (isCorpDirectChat(chat)) registerCorpDirectChat(chat.id, chat.peerId);
+    });
     const ids = new Set(chats.map((chat) => chat.id));
     const goneChatIds = this.chats.filter((chat) => !ids.has(chat.id)).map((chat) => buildCorpChatId(chat.id));
     const changedChatIds = this.chats.filter((old) => {
@@ -706,6 +757,7 @@ class CorpEngine {
     }) => this.applyRead(chatId, employeeId, maxId));
     on<HubTyping>('typing', (typing) => this.applyTyping(typing));
     on<CorpWakeUp>('wakeup', (wakeUp) => this.onWakeUp?.(wakeUp));
+    on<HubPresence>('presence', (presence) => this.applyPresence(presence));
     on<unknown>('chats_changed', () => void this.loadChats());
     on<unknown>('logout', () => {
       this.isHubWanted = false;

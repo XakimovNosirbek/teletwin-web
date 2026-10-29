@@ -536,6 +536,7 @@ async function loadMembers(chat: ApiChat): Promise<ApiChatMember[]> {
   ]));
   global = updateUsers(global, users);
   setGlobal(global);
+  list.forEach((member) => corpEngine.applyPresence({ ...member, employeeId: member.id }));
 
   return list.map(({ id, isAdmin }) => ({
     userId: id === ownId ? global.currentUserId! : buildCorpUserId(id),

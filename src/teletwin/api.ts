@@ -19,6 +19,7 @@ const RE_REJECTED = /rejected/i;
 
 export const CORP_CHAT_KIND_GROUP = 1;
 export const CORP_CHAT_KIND_CHANNEL = 2;
+export const CORP_CHAT_KIND_DIRECT = 3;
 
 export interface CorpEmployee {
   id: number;
@@ -41,9 +42,23 @@ export interface CorpChatInfo {
   pinnedIds?: number[];
   memberCount?: number;
   isAdmin?: boolean;
+  // Direct chats: the other employee
+  peerId?: number | null;
+  unreadMentionsCount?: number;
 }
 
-export interface CorpMember {
+export interface CorpPresence {
+  isOnline?: boolean;
+  lastSeenAt?: string | null;
+}
+
+export interface CorpEmployeeInfo extends CorpPresence {
+  id: number;
+  fullName: string;
+  login: string;
+}
+
+export interface CorpMember extends CorpPresence {
   id: number;
   fullName: string;
   login: string;
@@ -235,6 +250,14 @@ export function fetchCorpMe(server: string, token: string) {
 
 export function fetchCorpChats(server: string, token: string) {
   return request<CorpChatInfo[]>(server, 'GET', 'chats', token);
+}
+
+export function fetchCorpEmployees(server: string, token: string) {
+  return request<CorpEmployeeInfo[]>(server, 'GET', 'employees', token);
+}
+
+export function openCorpDirectChat(server: string, token: string, employeeId: number) {
+  return request<CorpChatInfo>(server, 'POST', 'chats/direct', token, { employeeId });
 }
 
 export function fetchCorpMembers(server: string, token: string, chatId: number) {

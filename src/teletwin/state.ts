@@ -1,10 +1,10 @@
 import type {
   ApiChat, ApiChatBannedRights, ApiChatFolder, ApiFormattedText, ApiMessage, ApiMessageEntity, ApiReactions, ApiUser,
-  MediaContent,
+  ApiUserStatus, MediaContent,
 } from '../api/types';
 import type { GlobalState } from '../global/types';
 import type {
-  CorpChatInfo, CorpEmployee, CorpEntity, CorpMedia, CorpMessage, CorpReaction,
+  CorpChatInfo, CorpEmployee, CorpEntity, CorpMedia, CorpMessage, CorpPresence, CorpReaction,
 } from './api';
 import { ApiMessageEntityTypes, MAIN_THREAD_ID } from '../api/types';
 
@@ -21,7 +21,7 @@ import { replaceThreadLocalStateParam, updateThreadInfo, updateThreadReadState }
 import { selectChatLastMessageId, selectChatMessages } from '../global/selectors';
 import { selectThread, selectThreadReadState } from '../global/selectors/threads';
 import { omit } from '../util/iteratees';
-import { CORP_CHAT_KIND_CHANNEL } from './api';
+import { CORP_CHAT_KIND_CHANNEL, CORP_CHAT_KIND_DIRECT } from './api';
 import {
   buildCorpChatId, buildCorpMediaId, buildCorpUserId, CORP_FOLDER_ID, isCorpChatId, isCorpPeerId, isCorpUserId,
 } from './ids';
@@ -34,6 +34,8 @@ const VIDEO_STICKER_MIME = 'video/webm';
 const STICKER_SIZE = 512;
 const DEFAULT_MIME = 'application/octet-stream';
 const MAX_BYTE = 255;
+// Online employees stay online until a hub `presence` event says otherwise
+const ONLINE_EXPIRES = 24 * 60 * 60;
 
 // Features the corp server has no counterpart for
 const UNSUPPORTED_RIGHTS: ApiChatBannedRights = {
@@ -76,7 +78,20 @@ export interface CorpLinkRule {
   pattern: RegExp;
 }
 
+export function isCorpDirectChat(info: CorpChatInfo): info is CorpChatInfo & { peerId: number } {
+  return info.kind === CORP_CHAT_KIND_DIRECT && typeof info.peerId === 'number';
+}
+
 export function buildCorpChat(info: CorpChatInfo): ApiChat {
+  if (isCorpDirectChat(info)) {
+    return {
+      id: buildCorpUserId(info.peerId),
+      type: 'chatTypePrivate',
+      title: info.title,
+      isMin: false,
+    };
+  }
+
   const isChannel = info.kind === CORP_CHAT_KIND_CHANNEL;
   const canPostInChannel = isChannel && (info.canPost || info.isAdmin);
 
@@ -110,6 +125,15 @@ export function buildCorpUser(employeeId: number, fullName: string): ApiUser {
     phoneNumber: '',
     noStatus: true,
   };
+}
+
+export function buildCorpUserStatus(presence: CorpPresence): ApiUserStatus | undefined {
+  const now = Math.floor(Date.now() / MS_IN_SECOND);
+  if (presence.isOnline) return { type: 'userStatusOnline', expires: now + ONLINE_EXPIRES };
+  if (presence.lastSeenAt) return { type: 'userStatusOffline', wasOnline: parseCorpDate(presence.lastSeenAt) };
+  if (presence.isOnline === false) return { type: 'userStatusRecently' };
+
+  return undefined;
 }
 
 export function buildCorpMessage(
@@ -336,6 +360,11 @@ export function applyCorpSnapshot<T extends GlobalState>(global: T, snapshot: Co
         usersById[userId] = buildCorpUser(dto.senderId, dto.senderName);
       }
     });
+  });
+  chats.forEach((chat) => {
+    if (isCorpDirectChat(chat) && !global.users.byId[buildCorpUserId(chat.peerId)]) {
+      usersById[buildCorpUserId(chat.peerId)] = buildCorpUser(chat.peerId, chat.title);
+    }
   });
   if (Object.keys(usersById).length) {
     global = updateUsers(global, usersById);
