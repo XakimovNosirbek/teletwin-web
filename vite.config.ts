@@ -77,7 +77,7 @@ export default defineConfig(({ mode }): UserConfig => {
     HTTPS_KEY_PATH: httpsKeyPath = '',
   } = env;
   const appEnv = env.APP_ENV || (mode === 'development' ? 'development' : 'production');
-  const defaultAppTitle = `Telegram${appEnv !== 'production' ? ' Beta' : ''}`;
+  const defaultAppTitle = `TeleTwin${appEnv !== 'production' ? ' Beta' : ''}`;
   const baseUrl = env.BASE_URL || PRODUCTION_URL;
   const appTitle = env.APP_TITLE || defaultAppTitle;
   const isProductionApp = appEnv === 'production';
@@ -291,7 +291,8 @@ function setViteEnv(env: Record<string, string>) {
 function buildCsp(appEnv: string) {
   return `
   default-src 'self';
-  connect-src 'self' wss://*.web.telegram.org blob: http: https: wss: ${appEnv === 'development' ? 'ipc:' : ''};
+  connect-src 'self' wss://*.web.telegram.org https://dtwin.uz wss://dtwin.uz
+    blob: http: https: wss: ${appEnv === 'development' ? 'ipc:' : ''};
   script-src 'self' 'wasm-unsafe-eval'
     https://t.me/_websync_ https://telegram.me/_websync_ https://telegram.dog/_websync_;
   worker-src 'self'${appEnv === 'development' ? ' blob:' : ''};
