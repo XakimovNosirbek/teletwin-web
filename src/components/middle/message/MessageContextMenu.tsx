@@ -40,6 +40,7 @@ import useFlag from '../../../hooks/useFlag';
 import useLang from '../../../hooks/useLang';
 import useLastCallback from '../../../hooks/useLastCallback';
 
+import { CorpSaveMessageItems } from '../../../teletwin/components/CorpSaved';
 import { CorpReplyInThreadItem } from '../../../teletwin/components/CorpThread';
 import { CorpWakeUpMessageItem } from '../../../teletwin/components/CorpWakeUp';
 import AvatarList from '../../common/AvatarList';
@@ -605,6 +606,7 @@ const MessageContextMenu = ({
           messageListType={messageListType}
           onClose={onClose}
         />
+        <CorpSaveMessageItems message={message} onClose={onClose} />
         <CorpWakeUpMessageItem message={message} onClose={onClose} />
         {canReport && <MenuItem icon="flag" onClick={onReport}>{lang('ReportPeerReport')}</MenuItem>}
         {canDelete && (message.anchorMsgId ? (

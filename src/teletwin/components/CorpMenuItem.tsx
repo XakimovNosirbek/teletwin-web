@@ -1,6 +1,7 @@
 import { memo } from '../../lib/teact/teact';
 
 import { getCorpCredentials, logoutFromCorp, setDirectPickerOpen } from '../index';
+import { setSavedModalOpen } from '../saved';
 import { setStatusModalOpen } from '../status';
 import { getIsWakeUpMuted, toggleWakeUpSound } from '../wakeup';
 
@@ -57,6 +58,9 @@ const CorpMenuItem = () => {
           </MenuItem>
           <MenuItem icon="smile" onClick={handleOpenStatus}>
             {lang('TeleTwinMyStatus')}
+          </MenuItem>
+          <MenuItem icon="saved-messages" onClick={() => setSavedModalOpen(true)}>
+            {lang('TeleTwinSavedTitle')}
           </MenuItem>
           <MenuItem icon={isWakeUpMuted ? 'mute' : 'unmute'} onClick={handleToggleSound}>
             {lang('TeleTwinWakeUpSound')}

@@ -15,7 +15,7 @@ import { getActions, getGlobal, setGlobal } from '../global';
 import type { ApiMessage, ApiMessagePoll, ApiTypingStatus } from '../api/types';
 import type { GlobalState } from '../global/types';
 import type {
-  CorpChatInfo, CorpMention, CorpMessage, CorpPoll, CorpPresence, CorpReaction, CorpThreadUpdate,
+  CorpChatInfo, CorpMention, CorpMessage, CorpPoll, CorpPresence, CorpReaction, CorpReminder, CorpThreadUpdate,
 } from './api';
 import type { CorpLinkRule, CorpSnapshot } from './state';
 import type { CorpCredentials } from './storage';
@@ -101,6 +101,11 @@ class CorpEngine {
   onWakeUp?: (wakeUp: CorpWakeUp) => void;
 
   onMention?: (mention: CorpMention) => void;
+
+  onReminder?: (reminder: CorpReminder) => void;
+
+  // Session-scoped stores outside the engine (saved items, activity) reset and reload with the session
+  onSessionChange?: (isActive: boolean) => void;
 
   linkRule?: CorpLinkRule;
 
@@ -243,6 +248,7 @@ class CorpEngine {
     void this.loadGroups();
     void this.loadChats();
     this.connectHub();
+    this.onSessionChange?.(true);
   }
 
   private stopSession() {
@@ -260,6 +266,7 @@ class CorpEngine {
     this.linkRule = undefined;
     setCorpGroupMentions([]);
     clearCorpStatuses();
+    this.onSessionChange?.(false);
   }
 
   handleFailure(err: unknown) {
@@ -926,6 +933,7 @@ class CorpEngine {
       chatId, messageId, poll,
     }) => this.applyPoll(chatId, messageId, poll, true));
     on<CorpWakeUp>('wakeup', (wakeUp) => this.onWakeUp?.(wakeUp));
+    on<CorpReminder>('reminder', (reminder) => this.onReminder?.(reminder));
     on<HubPresence>('presence', (presence) => this.applyPresence(presence));
     on<{ employeeId: number; emoji?: string; text?: string; until?: string; dndUntil?: string }>('status_changed', ({
       employeeId, emoji, text, until, dndUntil,

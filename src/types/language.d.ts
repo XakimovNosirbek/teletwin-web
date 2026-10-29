@@ -3418,6 +3418,20 @@ export interface LangPair {
   'TeleTwinStatusSave': undefined;
   'TeleTwinStatusClear': undefined;
   'TeleTwinWakeUpAnyway': undefined;
+  'TeleTwinSave': undefined;
+  'TeleTwinUnsave': undefined;
+  'TeleTwinSavedDone': undefined;
+  'TeleTwinRemind': undefined;
+  'TeleTwinRemind20m': undefined;
+  'TeleTwinRemind1h': undefined;
+  'TeleTwinRemind3h': undefined;
+  'TeleTwinRemindTomorrow': undefined;
+  'TeleTwinRemindCustom': undefined;
+  'TeleTwinReminderSet': undefined;
+  'TeleTwinSavedTitle': undefined;
+  'TeleTwinSavedEmpty': undefined;
+  'TeleTwinSavedDeleted': undefined;
+  'TeleTwinOpen': undefined;
   'TeleTwinWakeUp': undefined;
   'TeleTwinWakeUpPick': undefined;
   'TeleTwinWakeUpPickTitle': undefined;
@@ -5690,6 +5704,9 @@ export interface LangPairWithVariables<V = LangVariable> {
   'TeleTwinWakeUpDnd': {
     'name': V;
   };
+  'TeleTwinReminderIncoming': {
+    'text': V;
+  };
 }
 
 export interface LangPairPlural {
@@ -7264,7 +7281,8 @@ export interface LangKeyGroups {
     keys:
       | 'ActionPinnedTextYou'
       | 'ActionWebviewDataDone'
-      | 'ExactTextCopied';
+      | 'ExactTextCopied'
+      | 'TeleTwinReminderIncoming';
     variables: 'text';
   };
   'from,media': {

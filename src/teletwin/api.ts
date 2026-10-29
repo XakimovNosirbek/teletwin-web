@@ -602,6 +602,44 @@ export function setCorpChatNotify(
   );
 }
 
+export interface CorpSavedItem {
+  id: number;
+  messageId: number;
+  chatId: number;
+  remindAt?: string | null;
+  remindedAt?: string | null;
+  doneAt?: string | null;
+  createdAt: string;
+  // Missing when the message was deleted since
+  message?: CorpMessage | null;
+}
+
+export interface CorpReminder {
+  savedId: number;
+  chatId: number;
+  messageId: number;
+  systemChatId?: number;
+  systemMessageId?: number;
+}
+
+export function fetchCorpSaved(server: string, token: string) {
+  return request<CorpSavedItem[]>(server, 'GET', 'me/saved?done=0', token);
+}
+
+export function saveCorpMessage(server: string, token: string, messageId: number, remindAt?: string) {
+  return request<CorpSavedItem>(server, 'POST', 'me/saved', token, { messageId, remindAt });
+}
+
+export function updateCorpSaved(
+  server: string, token: string, id: number, body: { remindAt?: string; clearRemind?: boolean; done?: boolean },
+) {
+  return request<CorpSavedItem>(server, 'PATCH', `me/saved/${id}`, token, body);
+}
+
+export function deleteCorpSaved(server: string, token: string, id: number) {
+  return request<undefined>(server, 'DELETE', `me/saved/${id}`, token);
+}
+
 export function fetchCorpJiraIssue(server: string, token: string, key: string) {
   return request<CorpJiraIssue>(server, 'GET', `jira/issues/${encodeURIComponent(key)}`, token);
 }

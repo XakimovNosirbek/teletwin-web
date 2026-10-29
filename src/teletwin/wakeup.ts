@@ -141,7 +141,7 @@ function shakeApp() {
   ], { duration: SHAKE_DURATION, easing: 'ease-in-out' });
 }
 
-function showSystemNotification(text: string, corpChatId?: string, tag = 'teletwin-wakeup') {
+export function showSystemNotification(text: string, corpChatId?: string, tag = 'teletwin-wakeup') {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
 
   try {
