@@ -4576,6 +4576,13 @@
 "TeleTwinActivityMention" = "{name} sizni eslatdi · {chat}";
 "TeleTwinActivityThreadReply" = "{name} thread'ingizga javob berdi · {chat}";
 "TeleTwinActivityReaction" = "{name} {emoji} reaksiya qoldirdi · {chat}";
+"TeleTwinMyProfile" = "Profilim";
+"TeleTwinMyProfileHint" = "Lavozim, bo'lim va boshqa maydonlarni administrator o'zgartiradi";
+"TeleTwinProfileTitle" = "Lavozim";
+"TeleTwinProfileDepartment" = "Bo'lim";
+"TeleTwinProfilePhone" = "Telefon";
+"TeleTwinProfileBirthday" = "Tug'ilgan kun";
+"TeleTwinProfileWorkHours" = "Ish vaqti";
 "TeleTwinWakeUp" = "🦆 Uyg'otish";
 "TeleTwinWakeUpPick" = "🦆 Uyg'otish…";
 "TeleTwinWakeUpPickTitle" = "Kimni uyg'otamiz?";

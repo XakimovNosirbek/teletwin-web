@@ -4,6 +4,7 @@ import { CorpActivityModal } from './CorpActivity';
 import CorpDirectPicker from './CorpDirectPicker';
 import CorpGate from './CorpGate';
 import CorpJiraCard from './CorpJiraCard';
+import { CorpMyProfileModal } from './CorpProfile';
 import { CorpReminderPicker, CorpSavedModal } from './CorpSaved';
 import { CorpDndWakeUpConfirm, CorpStatusModal } from './CorpStatus';
 import { CorpWakeUpPicker } from './CorpWakeUp';
@@ -21,6 +22,7 @@ const CorpRoot = () => {
       <CorpReminderPicker />
       <CorpSavedModal />
       <CorpActivityModal />
+      <CorpMyProfileModal />
     </>
   );
 };

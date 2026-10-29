@@ -71,7 +71,16 @@ export interface CorpStatusUpdate {
   dndUntil?: string;
 }
 
-export interface CorpEmployeeInfo extends CorpPresence, CorpStatusFields {
+export interface CorpProfileFields {
+  title?: string | null;
+  department?: string | null;
+  phone?: string | null;
+  birthday?: string | null;
+  // Opaque JSON object, e.g. { tz, days, from, to }
+  workHours?: { days?: number[]; from?: string; to?: string; tz?: string } | null;
+}
+
+export interface CorpEmployeeInfo extends CorpPresence, CorpStatusFields, CorpProfileFields {
   id: number;
   fullName: string;
   login: string;
@@ -656,6 +665,11 @@ export function fetchCorpActivity(server: string, token: string, limit: number, 
   const search = new URLSearchParams({ limit: String(limit) });
   if (before) search.set('before', before);
   return request<CorpActivityItem[]>(server, 'GET', `me/activity?${search.toString()}`, token);
+}
+
+// Employees edit only their own phone; the other profile fields are set by an admin
+export function updateCorpMe(server: string, token: string, body: { phone?: string }) {
+  return request<CorpEmployeeInfo>(server, 'PATCH', 'me', token, body);
 }
 
 export function fetchCorpJiraIssue(server: string, token: string, key: string) {

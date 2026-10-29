@@ -58,6 +58,7 @@ import useEffectWithPrevDeps from '../../../hooks/useEffectWithPrevDeps';
 import useLang from '../../../hooks/useLang';
 import useLastCallback from '../../../hooks/useLastCallback';
 
+import { CorpProfileFields } from '../../../teletwin/components/CorpProfile';
 import Island, { IslandDescription } from '../../gili/layout/Island';
 import Switch from '../../gili/primitives/Switch';
 import Chat from '../../left/main/Chat';
@@ -410,6 +411,7 @@ const ChatExtra = ({
 
   return (
     <div className={buildClassName('ChatExtra', className)} style={style || createVtnStyle('chatExtra')}>
+      <CorpProfileFields peerId={peerId} />
       {user && userFullInfo?.isUnofficialSecurityRisk && (
         <Island className={styles.securityRiskIsland}>
           <div className={styles.unofficialSecurityRisk}>

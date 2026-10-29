@@ -3435,6 +3435,13 @@ export interface LangPair {
   'TeleTwinActivityTitle': undefined;
   'TeleTwinActivityMarkRead': undefined;
   'TeleTwinActivityEmpty': undefined;
+  'TeleTwinMyProfile': undefined;
+  'TeleTwinMyProfileHint': undefined;
+  'TeleTwinProfileTitle': undefined;
+  'TeleTwinProfileDepartment': undefined;
+  'TeleTwinProfilePhone': undefined;
+  'TeleTwinProfileBirthday': undefined;
+  'TeleTwinProfileWorkHours': undefined;
   'TeleTwinWakeUp': undefined;
   'TeleTwinWakeUpPick': undefined;
   'TeleTwinWakeUpPickTitle': undefined;

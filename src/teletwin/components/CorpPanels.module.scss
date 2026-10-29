@@ -81,3 +81,14 @@
     color: var(--color-text-secondary);
   }
 }
+
+.caption {
+  margin-bottom: 0.25rem;
+  font-weight: var(--font-weight-semibold);
+}
+
+.hint {
+  margin: -0.5rem 0 1rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+}

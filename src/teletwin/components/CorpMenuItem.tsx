@@ -4,6 +4,7 @@ import {
   getActivitySeenAt, getCorpActivity, getCorpActivityUnreadCount, loadCorpActivity, setActivityModalOpen,
 } from '../activity';
 import { getCorpCredentials, logoutFromCorp, setDirectPickerOpen } from '../index';
+import { setMyProfileOpen } from '../profile';
 import { setSavedModalOpen } from '../saved';
 import { setStatusModalOpen } from '../status';
 import { getIsWakeUpMuted, toggleWakeUpSound } from '../wakeup';
@@ -68,6 +69,9 @@ const CorpMenuItem = () => {
           </MenuItem>
           <MenuItem icon="new-chat-filled" onClick={handleWriteToEmployee}>
             {lang('TeleTwinDirectPick')}
+          </MenuItem>
+          <MenuItem icon="user" onClick={() => setMyProfileOpen(true)}>
+            {lang('TeleTwinMyProfile')}
           </MenuItem>
           <MenuItem icon="smile" onClick={handleOpenStatus}>
             {lang('TeleTwinMyStatus')}

@@ -36,6 +36,7 @@ import {
   buildCorpChatId, buildCorpPollId, buildCorpUserId, isCorpChatId, registerCorpDirectChat, setCorpGroupMentions,
 } from './ids';
 import { clearCorpMedia } from './media';
+import { clearCorpProfiles, setCorpProfiles } from './profile';
 import {
   applyCorpSnapshot, buildCorpMessage, buildCorpPoll, buildCorpReactions, buildCorpThreadInfo, buildCorpThreadInfoFrom,
   buildCorpUser, buildCorpUserStatus, getCorpChatMutedUntil, isCorpDirectChat, isCorpSnapshotApplied, removeCorpData,
@@ -266,6 +267,7 @@ class CorpEngine {
     this.linkRule = undefined;
     setCorpGroupMentions([]);
     clearCorpStatuses();
+    clearCorpProfiles();
     this.onSessionChange?.(false);
   }
 
@@ -520,6 +522,7 @@ class CorpEngine {
         this.applyPresence({ ...employee, employeeId: employee.id });
         setCorpStatus(employee.id, buildCorpStatus(employee));
       });
+      setCorpProfiles(employees);
     } catch (err) {
       // An old server has no presence
       if (epoch === this.epoch) this.handleFailure(err);
