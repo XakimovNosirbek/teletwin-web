@@ -1,9 +1,16 @@
 // REST client of the TeleTwin corp server (`docs/corp-api-v2.md` in the server repo).
-// The server URL is absolute (default `https://dtwin.uz/teletwin/`): the same build also runs on other origins.
+// The server URL is absolute: the same build also runs on other origins (desktop shell, dev server).
+// Served by the corp server itself at <server>web/ (https://tele.dtwin.uz/web/, legacy https://dtwin.uz/teletwin/web/)
+// the default is that same server, so requests stay same-origin; anywhere else it is the production server.
 //   REST -> <server>api/...
 //   Hub  -> <server>hub
 
-export const DEFAULT_CORP_SERVER = 'https://dtwin.uz/teletwin/';
+const PRODUCTION_CORP_SERVER = 'https://tele.dtwin.uz/';
+
+export const DEFAULT_CORP_SERVER = typeof location !== 'undefined' && location.protocol === 'https:'
+  && /\/web\/[^/]*$/.test(location.pathname)
+  ? new URL('../', location.href).href
+  : PRODUCTION_CORP_SERVER;
 
 const REQUEST_TIMEOUT = 30000;
 const HTTP_NO_CONTENT = 204;
