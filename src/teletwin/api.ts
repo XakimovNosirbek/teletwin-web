@@ -179,6 +179,25 @@ export interface CorpNewMessage {
   poll?: CorpNewPoll;
 }
 
+export interface CorpScheduledMessage {
+  id: number;
+  chatId: number;
+  sendAt: string;
+  createdAt?: string;
+  text: string;
+  entities?: CorpEntity[] | null;
+  replyToId?: number | null;
+  fileId?: string | null;
+  threadRootId?: number | null;
+  alsoToChannel?: boolean;
+  poll?: CorpNewPoll | null;
+}
+
+export interface CorpNewScheduledMessage extends CorpNewMessage {
+  sendAt: string;
+  threadRootId?: number;
+}
+
 export interface CorpUploadResult {
   fileId: string;
   size: number;
@@ -367,6 +386,29 @@ export function readCorpChat(server: string, token: string, chatId: number, maxI
 
 export function sendCorpTyping(server: string, token: string, chatId: number, action: string) {
   return request<undefined>(server, 'POST', `chats/${chatId}/typing`, token, { action });
+}
+
+export function fetchCorpScheduled(server: string, token: string, chatId: number) {
+  return request<CorpScheduledMessage[]>(server, 'GET', `chats/${chatId}/scheduled`, token);
+}
+
+export function createCorpScheduled(server: string, token: string, chatId: number, message: CorpNewScheduledMessage) {
+  return request<CorpScheduledMessage>(server, 'POST', `chats/${chatId}/scheduled`, token, message);
+}
+
+export function editCorpScheduled(
+  server: string, token: string, chatId: number, id: number,
+  update: { text?: string; entities?: CorpEntity[]; sendAt?: string },
+) {
+  return request<CorpScheduledMessage>(server, 'PATCH', `chats/${chatId}/scheduled/${id}`, token, update);
+}
+
+export function deleteCorpScheduled(server: string, token: string, chatId: number, id: number) {
+  return request<undefined>(server, 'DELETE', `chats/${chatId}/scheduled/${id}`, token);
+}
+
+export function sendCorpScheduledNow(server: string, token: string, chatId: number, id: number) {
+  return request<CorpMessage>(server, 'POST', `chats/${chatId}/scheduled/${id}/send`, token);
 }
 
 export function voteCorpPoll(server: string, token: string, pollId: number, optionIds: number[]) {

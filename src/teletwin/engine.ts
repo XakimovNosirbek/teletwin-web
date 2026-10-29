@@ -3,7 +3,7 @@
 //  - hub: WebSockets only, `access_token` query, `Ready()` after connect, then catch up every loaded chat
 //    with GET messages?afterId=<last id> and GET changes?since=<last sync>
 //  - events: `message`, `message_edited`, `messages_deleted`, `reactions`, `pins`, `read`, `typing`, `wakeup`,
-//    `presence`, `mention`, `poll_updated`, `chats_changed` (reload chats), `logout` (revoke)
+//    `presence`, `mention`, `poll_updated`, `scheduled_changed`, `chats_changed` (reload chats), `logout` (revoke)
 //  - hub closed -> GET me: 401 -> revoke, otherwise reconnect with backoff 1 s, 2 s, 4 s ... 30 s (reset on connect)
 //  - any API 401 -> revoke
 // The engine keeps the loaded corp history (`messagesByChat`) and re-applies it after Telegram syncs replace
@@ -826,6 +826,10 @@ class CorpEngine {
     on<HubPresence>('presence', (presence) => this.applyPresence(presence));
     on<CorpMention>('mention', (mention) => this.applyMention(mention));
     on<unknown>('chats_changed', () => void this.loadChats());
+    // Own scheduled messages changed on this or another device, or the server sent one
+    on<{ chatId: number }>('scheduled_changed', ({ chatId }) => {
+      if (this.getChatInfo(chatId)) getActions().loadScheduledHistory({ chatId: buildCorpChatId(chatId) });
+    });
     on<unknown>('logout', () => {
       this.isHubWanted = false;
       this.revoke();

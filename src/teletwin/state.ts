@@ -5,6 +5,7 @@ import type {
 import type { GlobalState } from '../global/types';
 import type {
   CorpChatInfo, CorpEmployee, CorpEntity, CorpMedia, CorpMessage, CorpPoll, CorpPresence, CorpReaction,
+  CorpScheduledMessage,
 } from './api';
 import { ApiMessageEntityTypes, MAIN_THREAD_ID } from '../api/types';
 
@@ -174,6 +175,34 @@ export function buildCorpMessage(
     reactions: dto.reactions?.length ? buildCorpReactions(dto.reactions, employeeId) : undefined,
     isForwardingAllowed: true,
     hasUnreadMention: hasUnreadMention || undefined,
+  };
+}
+
+// Own messages waiting for their time on the server. An attached file shows as the stock document placeholder.
+export function buildCorpScheduledMessage(
+  dto: CorpScheduledMessage, chatId: string, telegramUserId: string, linkRule?: CorpLinkRule,
+): ApiMessage {
+  const replyToMsgId = dto.replyToId || dto.threadRootId || undefined;
+  const text = dto.text || dto.poll?.question;
+
+  return {
+    id: dto.id,
+    chatId,
+    date: parseCorpDate(dto.sendAt),
+    isOutgoing: true,
+    senderId: telegramUserId,
+    content: {
+      text: text ? buildCorpText(text, dto.entities || undefined, linkRule) : undefined,
+      document: dto.fileId ? {
+        mediaType: 'document', id: buildCorpMediaId(dto.fileId), fileName: dto.fileId, size: 0, mimeType: DEFAULT_MIME,
+      } : undefined,
+    },
+    replyInfo: replyToMsgId ? {
+      type: 'message',
+      replyToMsgId,
+      replyToTopId: dto.threadRootId && !dto.alsoToChannel ? dto.threadRootId : undefined,
+    } : undefined,
+    isScheduled: true,
   };
 }
 

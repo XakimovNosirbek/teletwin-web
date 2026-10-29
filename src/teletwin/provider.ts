@@ -10,7 +10,9 @@ import type {
   ApiPeer, ApiReaction, ApiSendMessageAction, ApiSticker, ApiVideo, MediaContent,
 } from '../api/types';
 import type { ForwardMessagesParams, SendMessageParams } from '../types';
-import type { CorpMediaKind, CorpMessage, CorpNewPoll } from './api';
+import type {
+  CorpMediaKind, CorpMessage, CorpNewPoll, CorpScheduledMessage,
+} from './api';
 import { MAIN_THREAD_ID } from '../api/types';
 
 import {
@@ -28,9 +30,10 @@ import { getMessageKey } from '../util/keys/messageKey';
 import { getServerTime } from '../util/serverTime';
 import { getRichInputAsFormatted } from '../components/ui/textInput/richText';
 import {
-  closeCorpPoll, CorpApiError, deleteCorpMessages, editCorpMessage, fetchCorpMembers, fetchCorpMessages,
-  fetchCorpUnreadMentions, forwardCorpMessages, readCorpChat, readCorpMentions, sendCorpMessage,
-  sendCorpTyping, setCorpPin, setCorpReaction, uploadCorpFile, voteCorpPoll,
+  closeCorpPoll, CorpApiError, createCorpScheduled, deleteCorpMessages, deleteCorpScheduled, editCorpMessage,
+  editCorpScheduled, fetchCorpMembers, fetchCorpMessages, fetchCorpScheduled, fetchCorpUnreadMentions,
+  forwardCorpMessages, readCorpChat, readCorpMentions, sendCorpMessage, sendCorpScheduledNow, sendCorpTyping,
+  setCorpPin, setCorpReaction, uploadCorpFile, voteCorpPoll,
 } from './api';
 import { corpEngine } from './engine';
 import {
@@ -38,7 +41,7 @@ import {
 } from './ids';
 import { downloadCorpMedia, fetchMediaBlob } from './media';
 import {
-  buildCorpEntities, buildCorpText, buildCorpUser, encodeWaveform,
+  buildCorpEntities, buildCorpScheduledMessage, buildCorpText, buildCorpUser, encodeWaveform,
 } from './state';
 
 const SEARCH_LIMIT_MAX = 200;
@@ -78,6 +81,10 @@ export const corpMethods: CorpMethods = {
   sendPollVote,
   closePoll,
   loadPollOptionResults,
+  fetchScheduledHistory,
+  sendScheduledMessages,
+  rescheduleMessage,
+  deleteScheduledMessages,
   downloadMedia: downloadCorpMedia,
 };
 
@@ -190,9 +197,10 @@ function buildMessages(list: CorpMessage[]) {
 
 async function sendMessage(params: SendMessageParams, onProgress?: ApiOnProgress) {
   const { chat } = params;
-  if (!chat || params.scheduledAt || params.todo || params.contact || params.story) {
+  if (!chat || params.todo || params.contact || params.story) {
     return undefined;
   }
+  if (params.scheduledAt) return scheduleMessage(chat, params, params.scheduledAt);
   if (params.poll) return sendPoll(chat, params.poll, params);
 
   const { text, entities } = getOutgoingText(params);
@@ -256,6 +264,45 @@ async function sendPoll(chat: ApiChat, poll: ApiNewPoll, params: SendMessagePara
   });
   corpEngine.applyLive(dto);
   return corpEngine.buildMessage(dto);
+}
+
+// The server keeps scheduled messages; the bubble appears in the scheduled list once it has them
+async function scheduleMessage(chat: ApiChat, params: SendMessageParams, scheduledAt: number) {
+  const { text, entities } = getOutgoingText(params);
+  const hasMedia = Boolean(getOutgoingMedia(params));
+  if (!text && !hasMedia && !params.poll) return undefined;
+
+  const credentials = corpEngine.credentials!;
+  const fileId = hasMedia ? await uploadOutgoingMedia(params) : undefined;
+  const { replyToId, threadRootId } = getOutgoingReply(params);
+  const dto = await createCorpScheduled(credentials.server, credentials.token, getServerChatId(chat.id), {
+    sendAt: new Date(scheduledAt * 1000).toISOString(),
+    text: text || '',
+    entities: buildCorpEntities(entities),
+    replyToId,
+    threadRootId,
+    fileId,
+    poll: params.poll ? buildCorpNewPoll(params.poll) : undefined,
+  });
+
+  const message = buildScheduled(chat, dto);
+  getActions().apiUpdate({
+    '@type': 'newScheduledMessage', chatId: chat.id, id: message.id, message, wasDrafted: params.wasDrafted,
+  });
+  return message;
+}
+
+function buildScheduled(chat: ApiChat, dto: CorpScheduledMessage) {
+  return buildCorpScheduledMessage(dto, chat.id, getGlobal().currentUserId!, corpEngine.linkRule);
+}
+
+// Inside a thread the stock reply info names the thread root as `replyToTopId`
+function getOutgoingReply(params: SendMessageParams) {
+  const replyInfo = params.replyInfo?.type === 'message' ? params.replyInfo : undefined;
+  const threadRootId = replyInfo?.replyToTopId || undefined;
+  const replyToMsgId = replyInfo?.replyToMsgId;
+
+  return { threadRootId, replyToId: replyToMsgId && replyToMsgId !== threadRootId ? replyToMsgId : undefined };
 }
 
 function buildCorpNewPoll({ summary }: ApiNewPoll): CorpNewPoll {
@@ -456,6 +503,20 @@ async function editMessage({
   const credentials = corpEngine.credentials!;
   const corpEntities = buildCorpEntities(entities);
 
+  if (message.isScheduled) {
+    const dto = await editCorpScheduled(credentials.server, credentials.token, getServerChatId(chat.id), message.id, {
+      text, entities: corpEntities,
+    });
+    actions.apiUpdate({
+      '@type': 'updateScheduledMessage',
+      chatId: chat.id,
+      id: message.id,
+      message: buildScheduled(chat, dto),
+      isFull: true,
+    });
+    return;
+  }
+
   actions.apiUpdate({
     '@type': 'updateMessage',
     chatId: chat.id,
@@ -549,6 +610,51 @@ async function sendMessageAction({ peer, action }: { peer: ApiPeer; action: ApiS
   return true;
 }
 
+// ---- scheduled messages ----
+
+async function fetchScheduledHistory({ chat }: { chat: ApiChat }) {
+  const credentials = corpEngine.credentials!;
+  const list = await fetchCorpScheduled(credentials.server, credentials.token, getServerChatId(chat.id));
+  return { messages: list.map((dto) => buildScheduled(chat, dto)) };
+}
+
+async function sendScheduledMessages({ chat, ids }: { chat: ApiChat; ids: number[] }) {
+  const credentials = corpEngine.credentials!;
+  const serverChatId = getServerChatId(chat.id);
+  const sent = await Promise.all(ids.map((id) => (
+    sendCorpScheduledNow(credentials.server, credentials.token, serverChatId, id)
+  )));
+  getActions().apiUpdate({
+    '@type': 'deleteScheduledMessages', chatId: chat.id, ids, newIds: sent.map(({ id }) => id),
+  });
+  sent.forEach((dto) => corpEngine.applyLive(dto));
+}
+
+async function rescheduleMessage({
+  chat, message, scheduledAt,
+}: { chat: ApiChat; message: ApiMessage; scheduledAt: number }) {
+  const credentials = corpEngine.credentials!;
+  const dto = await editCorpScheduled(credentials.server, credentials.token, getServerChatId(chat.id), message.id, {
+    sendAt: new Date(scheduledAt * 1000).toISOString(),
+  });
+  getActions().apiUpdate({
+    '@type': 'updateScheduledMessage',
+    chatId: chat.id,
+    id: message.id,
+    message: buildScheduled(chat, dto),
+    isFull: true,
+  });
+}
+
+async function deleteScheduledMessages({ chat, messageIds }: { chat: ApiChat; messageIds: number[] }) {
+  const credentials = corpEngine.credentials!;
+  const serverChatId = getServerChatId(chat.id);
+  await Promise.all(messageIds.map((id) => (
+    deleteCorpScheduled(credentials.server, credentials.token, serverChatId, id)
+  )));
+  getActions().apiUpdate({ '@type': 'deleteScheduledMessages', chatId: chat.id, ids: messageIds });
+}
+
 // ---- polls ----
 
 async function sendPollVote({ chat, messageId, options }: { chat: ApiChat; messageId: number; options: string[] }) {
@@ -599,7 +705,12 @@ function getMessagePollServerId(chat: ApiChat, messageId: number) {
 
 async function fetchFullChat(chat: ApiChat) {
   const serverChatId = getServerChatId(chat.id);
-  const members = await loadMembers(chat);
+  const credentials = corpEngine.credentials!;
+  const [members, scheduled] = await Promise.all([
+    loadMembers(chat),
+    // The scheduled list button of the composer depends on it
+    fetchCorpScheduled(credentials.server, credentials.token, serverChatId).catch(() => undefined),
+  ]);
   const info = corpEngine.getChatInfo(serverChatId);
 
   return {
@@ -610,6 +721,7 @@ async function fetchFullChat(chat: ApiChat) {
         member.userId, member,
       ])),
       enabledReactions: { type: 'all' as const },
+      hasScheduledMessages: scheduled ? scheduled.length > 0 : undefined,
     },
     chats: [],
     userStatusesById: {},
