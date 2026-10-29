@@ -557,6 +557,17 @@ export interface CorpJiraIssue {
   url?: string;
 }
 
+export interface CorpUserGroup {
+  id: number;
+  handle: string;
+  name: string;
+  memberIds: number[];
+}
+
+export function fetchCorpGroups(server: string, token: string) {
+  return request<CorpUserGroup[]>(server, 'GET', 'groups', token);
+}
+
 export function fetchCorpJiraIssue(server: string, token: string, key: string) {
   return request<CorpJiraIssue>(server, 'GET', `jira/issues/${encodeURIComponent(key)}`, token);
 }

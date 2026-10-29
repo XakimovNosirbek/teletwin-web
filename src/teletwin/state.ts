@@ -25,12 +25,14 @@ import { selectThread, selectThreadInfo, selectThreadReadState } from '../global
 import { omit } from '../util/iteratees';
 import { CORP_CHAT_KIND_CHANNEL, CORP_CHAT_KIND_DIRECT } from './api';
 import {
-  buildCorpChatId, buildCorpMediaId, buildCorpPollId, buildCorpUserId, CORP_FOLDER_ID, CORP_MENTION_ALL_ID,
-  CORP_MENTION_HERE_ID, getEmployeeId, isCorpChatId, isCorpMentionKeywordId, isCorpPeerId, isCorpUserId,
+  buildCorpChatId, buildCorpGroupMentionId, buildCorpMediaId, buildCorpPollId, buildCorpUserId, CORP_FOLDER_ID,
+  CORP_MENTION_ALL_ID, CORP_MENTION_HERE_ID, getCorpGroupMentions, getEmployeeId, isCorpChatId, isCorpMentionKeywordId,
+  isCorpPeerId, isCorpUserId,
 } from './ids';
 
 const MS_IN_SECOND = 1000;
 const FOLDER_EMOTICON = '💼';
+const GROUP_MENTION_EMOTICON = '👥';
 const ENTITY_TYPE_PREFIX = 'MessageEntity';
 const LOTTIE_MIME = 'application/x-tgsticker';
 const VIDEO_STICKER_MIME = 'video/webm';
@@ -303,12 +305,20 @@ export function buildCorpMentionKeywordUsers(): Record<string, ApiUser> {
   };
 }
 
-function buildMentionKeywordUser(id: string, keyword: string): ApiUser {
+// Tooltip entries of user groups: inserted as plain `@handle`, the server expands them to the members
+export function buildCorpGroupMentionUsers(): Record<string, ApiUser> {
+  return Object.fromEntries(getCorpGroupMentions().map(({ id, handle, name }) => {
+    const userId = buildCorpGroupMentionId(id);
+    return [userId, buildMentionKeywordUser(userId, handle, `${GROUP_MENTION_EMOTICON} ${name}`)];
+  }));
+}
+
+function buildMentionKeywordUser(id: string, keyword: string, title = `@${keyword}`): ApiUser {
   return {
     id,
     isMin: false,
     type: 'userTypeRegular',
-    firstName: `@${keyword}`,
+    firstName: title,
     usernames: [{ username: keyword, isActive: true, isEditable: false }],
     phoneNumber: '',
     noStatus: true,
@@ -523,6 +533,9 @@ export function applyCorpSnapshot<T extends GlobalState>(global: T, snapshot: Co
     });
   });
   if (!global.users.byId[CORP_MENTION_ALL_ID]) Object.assign(usersById, buildCorpMentionKeywordUsers());
+  Object.entries(buildCorpGroupMentionUsers()).forEach(([userId, user]) => {
+    if (global.users.byId[userId]?.firstName !== user.firstName) usersById[userId] = user;
+  });
   chats.forEach((chat) => {
     if (isCorpDirectChat(chat) && !global.users.byId[buildCorpUserId(chat.peerId)]) {
       usersById[buildCorpUserId(chat.peerId)] = buildCorpUser(chat.peerId, chat.title);

@@ -101,8 +101,37 @@ export function parseCorpMediaHash(hash: string) {
 export const CORP_MENTION_ALL_ID = buildCorpUserId(2 ** 32 - 1);
 export const CORP_MENTION_HERE_ID = buildCorpUserId(2 ** 32 - 2);
 
+// User groups (`@buxgalteriya`) appear in the mention tooltip as users below the keyword ids
+const CORP_GROUP_MENTION_BASE = 2 ** 32 - 1024;
+
+export interface CorpGroupMention {
+  id: number;
+  handle: string;
+  name: string;
+}
+
+let groupMentions: CorpGroupMention[] = [];
+
+export function setCorpGroupMentions(groups: CorpGroupMention[]) {
+  groupMentions = groups;
+}
+
+export function getCorpGroupMentions() {
+  return groupMentions;
+}
+
+export function buildCorpGroupMentionId(groupId: number) {
+  return buildCorpUserId(CORP_GROUP_MENTION_BASE - groupId);
+}
+
+export function getCorpGroupMentionIds() {
+  return groupMentions.map(({ id }) => buildCorpGroupMentionId(id));
+}
+
 export function isCorpMentionKeywordId(userId: string) {
-  return userId === CORP_MENTION_ALL_ID || userId === CORP_MENTION_HERE_ID;
+  if (userId === CORP_MENTION_ALL_ID || userId === CORP_MENTION_HERE_ID) return true;
+  const employeeId = getEmployeeId(userId);
+  return employeeId > CORP_GROUP_MENTION_BASE - 2 ** 20 && employeeId <= CORP_GROUP_MENTION_BASE;
 }
 
 export function getEmployeeId(corpUserId: string) {

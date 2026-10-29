@@ -29,11 +29,11 @@ import { getCurrentTabId } from '../util/establishMultitabRole';
 import { getTranslationFn } from '../util/localization';
 import { getServerTime } from '../util/serverTime';
 import {
-  buildCorpHubUrl, fetchCorpChanges, fetchCorpChats, fetchCorpConfig, fetchCorpEmployees, fetchCorpMe,
+  buildCorpHubUrl, fetchCorpChanges, fetchCorpChats, fetchCorpConfig, fetchCorpEmployees, fetchCorpGroups, fetchCorpMe,
   fetchCorpMessages, isCorpUnauthorized, logoutCorp, openCorpDirectChat,
 } from './api';
 import {
-  buildCorpChatId, buildCorpPollId, buildCorpUserId, isCorpChatId, registerCorpDirectChat,
+  buildCorpChatId, buildCorpPollId, buildCorpUserId, isCorpChatId, registerCorpDirectChat, setCorpGroupMentions,
 } from './ids';
 import { clearCorpMedia } from './media';
 import {
@@ -237,6 +237,7 @@ class CorpEngine {
     this.sessionStartedAt = Date.now();
     this.readMarks = loadReadMarks(this.telegramUserId!, this.credentials!.employee.id);
     void this.loadConfig();
+    void this.loadGroups();
     void this.loadChats();
     this.connectHub();
   }
@@ -254,6 +255,7 @@ class CorpEngine {
     this.changesSince = {};
     this.pendingByClientId.clear();
     this.linkRule = undefined;
+    setCorpGroupMentions([]);
   }
 
   handleFailure(err: unknown) {
@@ -442,6 +444,23 @@ class CorpEngine {
       this.relinkLoadedMessages();
     } catch (err) {
       // An old server has no config: messages keep plain text
+      if (epoch === this.epoch) this.handleFailure(err);
+    }
+  }
+
+  // User groups for the mention tooltip; they join global state with the next snapshot
+  private async loadGroups() {
+    const credentials = this.credentials;
+    if (!credentials) return;
+    const epoch = this.epoch;
+
+    try {
+      const groups = await fetchCorpGroups(credentials.server, credentials.token);
+      if (epoch !== this.epoch) return;
+      setCorpGroupMentions(groups.map(({ id, handle, name }) => ({ id, handle, name })));
+      if (this.areChatsLoaded) this.commit();
+    } catch (err) {
+      // An old server has no groups
       if (epoch === this.epoch) this.handleFailure(err);
     }
   }

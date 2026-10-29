@@ -16,7 +16,9 @@ import {
 } from '../../../../../global/helpers/peers';
 import { pickTruthy, unique } from '../../../../../util/iteratees';
 import { getTranslationFn } from '../../../../../util/localization';
-import { CORP_MENTION_ALL_ID, CORP_MENTION_HERE_ID, isCorpChatId } from '../../../../../teletwin/ids';
+import {
+  CORP_MENTION_ALL_ID, CORP_MENTION_HERE_ID, getCorpGroupMentionIds, isCorpChatId,
+} from '../../../../../teletwin/ids';
 import { replaceEditorRange } from '../../../../middle/composer/helpers/richEditorComposer';
 import {
   buildBlockMatch,
@@ -80,7 +82,8 @@ function filterMentionUsers(config: RichEditorTooltipsConfig, query: string) {
     return result;
   }, []);
   const ids = unique([
-    ...(isCorpChatId(context.chatId) && memberIds ? [CORP_MENTION_ALL_ID, CORP_MENTION_HERE_ID] : []),
+    ...(isCorpChatId(context.chatId) && memberIds
+      ? [CORP_MENTION_ALL_ID, CORP_MENTION_HERE_ID, ...getCorpGroupMentionIds()] : []),
     ...(context.topInlineBotIds || []),
     ...(memberIds || []),
     ...(context.topGuestBotIds || []),
