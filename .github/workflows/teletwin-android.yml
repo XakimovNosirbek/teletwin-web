@@ -1,7 +1,9 @@
 # TeleTwin Android: a Capacitor shell (mobile/) that opens the hosted web app (BASE_URL in
 # mobile/capacitor.config.json), so web deploys update every phone without a new APK.
-# Debug APK is signed with a debug key cached between runs (so updates install over each other);
-# the AAB is unsigned unless the TELETWIN_KEYSTORE_* secrets are set. Keystores are never committed.
+# TeleTwin-<v>.apk is the one to install: release code (not debuggable, fast) signed with a debug key
+# cached between runs, so updates install over each other and over earlier debug builds.
+# TeleTwin-<v>-debug.apk is debuggable (WebView inspection on) for diagnostics only.
+# The AAB is unsigned unless the TELETWIN_KEYSTORE_* secrets are set. Keystores are never committed.
 
 name: TeleTwin android
 
@@ -69,7 +71,7 @@ jobs:
             echo "No release keystore secret: the AAB stays unsigned"
           fi
 
-      - name: Build debug APK and release AAB
+      - name: Build APKs and release AAB
         working-directory: mobile/android
         env:
           TELETWIN_KEYSTORE_PASSWORD: ${{ secrets.TELETWIN_KEYSTORE_PASSWORD }}
@@ -77,11 +79,12 @@ jobs:
           TELETWIN_KEY_PASSWORD: ${{ secrets.TELETWIN_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug bundleRelease
+          ./gradlew --no-daemon assembleInternal assembleDebug bundleRelease
 
       - name: Collect packages
         run: |
           mkdir -p dist
+          cp android/app/build/outputs/apk/internal/app-internal.apk "dist/TeleTwin-$TELETWIN_VERSION_NAME.apk"
           cp android/app/build/outputs/apk/debug/app-debug.apk "dist/TeleTwin-$TELETWIN_VERSION_NAME-debug.apk"
           cp android/app/build/outputs/bundle/release/*.aab "dist/TeleTwin-$TELETWIN_VERSION_NAME-release.aab"
           ls -l dist

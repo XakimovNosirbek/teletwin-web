@@ -180,5 +180,30 @@
     originalClick.call(this);
   };
 
+  // System bars follow the web theme. The web app writes it into <meta name="theme-color">
+  // (#fff light, #212121 dark) and toggles html.theme-dark; both change only on a theme switch.
+  var lastTheme = '';
+  function reportTheme() {
+    var meta = document.querySelector('meta[name="theme-color"]');
+    var isDark = document.documentElement.classList.contains('theme-dark');
+    var color = (meta && meta.getAttribute('content')) || (isDark ? '#212121' : '#ffffff');
+    var key = color + '|' + isDark;
+    if (key === lastTheme) return;
+    lastTheme = key;
+    send({ type: 'theme', color: color, dark: isDark });
+  }
+  function watchTheme() {
+    reportTheme();
+    var observer = new MutationObserver(reportTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    var meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) observer.observe(meta, { attributes: true, attributeFilter: ['content'] });
+  }
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', watchTheme, { once: true });
+  } else {
+    watchTheme();
+  }
+
   send({ type: 'init' });
 })();

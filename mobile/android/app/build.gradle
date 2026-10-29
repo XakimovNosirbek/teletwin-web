@@ -37,6 +37,13 @@ android {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
+        // Tester APK: release code (not debuggable, so ART runs the WebView's Java precompiled and
+        // WebView inspection stays off) signed with the debug key, so it installs over debug builds.
+        internal {
+            initWith release
+            signingConfig signingConfigs.debug
+            matchingFallbacks = ['release']
+        }
     }
 }
 

@@ -33,6 +33,8 @@ public class MainActivity extends BridgeActivity {
             }
         );
         super.onCreate(savedInstanceState);
+        // Day/night default until the page reports its theme through the bridge.
+        TeleTwinBridge.applySystemBarColor(this, null);
 
         // Back closes the open chat or modal (the web app keeps them in history);
         // on the chat list it sends the app to the background instead of ending the session.

@@ -10,12 +10,17 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.media.AudioManager;
+import android.media.AudioRecordingConfiguration;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.provider.MediaStore;
 import android.util.Base64;
 import android.util.Log;
+import android.view.Window;
 import android.webkit.WebView;
 import android.widget.Toast;
 import androidx.activity.result.ActivityResultLauncher;
@@ -24,6 +29,9 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.ColorUtils;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.webkit.JavaScriptReplyProxy;
 import androidx.webkit.WebMessageCompat;
 import androidx.webkit.WebViewCompat;
@@ -37,6 +45,7 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
@@ -85,6 +94,7 @@ final class TeleTwinBridge {
             }
         );
         createNotificationChannel();
+        watchMicrophoneSilencing();
     }
 
     /** Call before the first page load so the document-start script reaches it. */
@@ -140,6 +150,9 @@ final class TeleTwinBridge {
             case "notification-close":
                 NotificationManagerCompat.from(activity).cancel(notificationId(message.optString("session"), message.optInt("id")));
                 break;
+            case "theme":
+                applySystemBarColor(activity, parseCssColor(message.optString("color")));
+                break;
             case "download-start":
             case "download-chunk":
             case "download-end":
@@ -150,6 +163,82 @@ final class TeleTwinBridge {
                 break;
         }
     }
+
+    // region System bars
+
+    /** #rgb / #rrggbb from the page; anything else falls back to the day/night default. */
+    static Integer parseCssColor(String value) {
+        if (value == null) return null;
+        String v = value.trim();
+        if (v.matches("#[0-9a-fA-F]{3}")) {
+            v = "#" + v.charAt(1) + v.charAt(1) + v.charAt(2) + v.charAt(2) + v.charAt(3) + v.charAt(3);
+        }
+        if (!v.matches("#[0-9a-fA-F]{6}")) return null;
+        return Color.parseColor(v);
+    }
+
+    /**
+     * Paints the status and navigation bar areas with the page colour. Capacitor pads the decor view by the
+     * system bar insets, so on Android 15+ (edge-to-edge) those areas show the window background.
+     */
+    @SuppressWarnings("deprecation")
+    static void applySystemBarColor(AppCompatActivity activity, Integer requested) {
+        int color = requested != null ? requested : ContextCompat.getColor(activity, R.color.window_background);
+        boolean isLight = ColorUtils.calculateLuminance(color) > 0.5;
+        activity.runOnUiThread(() -> {
+            Window window = activity.getWindow();
+            window.setBackgroundDrawable(new ColorDrawable(color));
+            window.setStatusBarColor(color);
+            window.setNavigationBarColor(color);
+            WindowInsetsControllerCompat controller = WindowCompat.getInsetsController(window, window.getDecorView());
+            controller.setAppearanceLightStatusBars(isLight);
+            controller.setAppearanceLightNavigationBars(isLight);
+        });
+    }
+
+    // endregion
+
+    // region Microphone
+
+    /**
+     * Android feeds zeros instead of failing when it silences a capture (app not in the foreground,
+     * another app holding the mic, mic privacy toggle). A voice message then uploads as ~1 s of silence,
+     * so tell the user and leave the reason in logcat.
+     */
+    private void watchMicrophoneSilencing() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return;
+        AudioManager audioManager = activity.getSystemService(AudioManager.class);
+        if (audioManager == null) return;
+        audioManager.registerAudioRecordingCallback(
+            new AudioManager.AudioRecordingCallback() {
+                private boolean hasWarned;
+
+                @Override
+                public void onRecordingConfigChanged(List<AudioRecordingConfiguration> configs) {
+                    if (configs.isEmpty()) {
+                        hasWarned = false;
+                        return;
+                    }
+                    for (AudioRecordingConfiguration config : configs) {
+                        Log.i(
+                            TAG,
+                            "Mic capture: source=" + config.getClientAudioSource() + " session=" + config.getClientAudioSessionId() +
+                            " silenced=" + config.isClientSilenced() +
+                            " device=" + (config.getAudioDevice() != null ? config.getAudioDevice().getProductName() : "none")
+                        );
+                        if (config.isClientSilenced() && !hasWarned) {
+                            hasWarned = true;
+                            Log.w(TAG, "Android silenced the microphone capture; the recording will be empty");
+                            toast(activity.getString(R.string.mic_silenced));
+                        }
+                    }
+                }
+            },
+            null
+        );
+    }
+
+    // endregion
 
     // region Notifications
 

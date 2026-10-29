@@ -7,4 +7,5 @@
     <string name="notification_channel_messages">Messages</string>
     <string name="download_saved">Saved: %1$s</string>
     <string name="download_failed">Download failed: %1$s</string>
+    <string name="mic_silenced">Android muted the microphone: the voice message will be silent. Close other apps that use the microphone and keep TeleTwin open while recording.</string>
 </resources>
