@@ -3432,6 +3432,9 @@ export interface LangPair {
   'TeleTwinSavedEmpty': undefined;
   'TeleTwinSavedDeleted': undefined;
   'TeleTwinOpen': undefined;
+  'TeleTwinActivityTitle': undefined;
+  'TeleTwinActivityMarkRead': undefined;
+  'TeleTwinActivityEmpty': undefined;
   'TeleTwinWakeUp': undefined;
   'TeleTwinWakeUpPick': undefined;
   'TeleTwinWakeUpPickTitle': undefined;
@@ -5706,6 +5709,19 @@ export interface LangPairWithVariables<V = LangVariable> {
   };
   'TeleTwinReminderIncoming': {
     'text': V;
+  };
+  'TeleTwinActivityMention': {
+    'name': V;
+    'chat': V;
+  };
+  'TeleTwinActivityThreadReply': {
+    'name': V;
+    'chat': V;
+  };
+  'TeleTwinActivityReaction': {
+    'name': V;
+    'chat': V;
+    'emoji': V;
   };
 }
 

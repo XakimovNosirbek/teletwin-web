@@ -1,5 +1,8 @@
-import { memo } from '../../lib/teact/teact';
+import { memo, useEffect } from '../../lib/teact/teact';
 
+import {
+  getActivitySeenAt, getCorpActivity, getCorpActivityUnreadCount, loadCorpActivity, setActivityModalOpen,
+} from '../activity';
 import { getCorpCredentials, logoutFromCorp, setDirectPickerOpen } from '../index';
 import { setSavedModalOpen } from '../saved';
 import { setStatusModalOpen } from '../status';
@@ -12,6 +15,8 @@ import useLastCallback from '../../hooks/useLastCallback';
 import MenuItem from '../../components/ui/MenuItem';
 import NestedMenuItem from '../../components/ui/NestedMenuItem';
 
+import styles from './CorpPanels.module.scss';
+
 const RE_URL_SCHEME = /^https?:\/\//;
 const RE_TRAILING_SLASH = /\/$/;
 
@@ -21,6 +26,14 @@ const CorpMenuItem = () => {
   const lang = useLang();
   const credentials = useDerivedState(getCorpCredentials);
   const isWakeUpMuted = useDerivedState(getIsWakeUpMuted);
+  useDerivedState(getCorpActivity);
+  useDerivedState(getActivitySeenAt);
+  const activityUnread = getCorpActivityUnreadCount();
+
+  // The menu is rendered when the main menu opens: a fresh unread count for "Faollik"
+  useEffect(() => {
+    if (credentials) void loadCorpActivity();
+  }, [credentials]);
 
   const handleLogout = useLastCallback(() => {
     logoutFromCorp();
@@ -58,6 +71,10 @@ const CorpMenuItem = () => {
           </MenuItem>
           <MenuItem icon="smile" onClick={handleOpenStatus}>
             {lang('TeleTwinMyStatus')}
+          </MenuItem>
+          <MenuItem icon="mention" onClick={() => setActivityModalOpen(true)}>
+            {lang('TeleTwinActivityTitle')}
+            {activityUnread > 0 && <span className={styles.badge} data-corp-activity-badge>{activityUnread}</span>}
           </MenuItem>
           <MenuItem icon="saved-messages" onClick={() => setSavedModalOpen(true)}>
             {lang('TeleTwinSavedTitle')}

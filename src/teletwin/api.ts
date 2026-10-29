@@ -640,6 +640,24 @@ export function deleteCorpSaved(server: string, token: string, id: number) {
   return request<undefined>(server, 'DELETE', `me/saved/${id}`, token);
 }
 
+export interface CorpActivityItem {
+  // `mention`, `thread_reply` or `reaction`
+  type: string;
+  at: string;
+  chatId: number;
+  messageId: number;
+  actorId: number;
+  actorName: string;
+  emoji?: string | null;
+  message?: CorpMessage | null;
+}
+
+export function fetchCorpActivity(server: string, token: string, limit: number, before?: string) {
+  const search = new URLSearchParams({ limit: String(limit) });
+  if (before) search.set('before', before);
+  return request<CorpActivityItem[]>(server, 'GET', `me/activity?${search.toString()}`, token);
+}
+
 export function fetchCorpJiraIssue(server: string, token: string, key: string) {
   return request<CorpJiraIssue>(server, 'GET', `jira/issues/${encodeURIComponent(key)}`, token);
 }

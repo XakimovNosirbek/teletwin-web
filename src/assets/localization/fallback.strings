@@ -4570,6 +4570,12 @@
 "TeleTwinSavedDeleted" = "Xabar o'chirilgan";
 "TeleTwinOpen" = "Ochish";
 "TeleTwinReminderIncoming" = "⏰ Eslatma: {text}";
+"TeleTwinActivityTitle" = "Faollik";
+"TeleTwinActivityMarkRead" = "Hammasini o'qildi deb belgilash";
+"TeleTwinActivityEmpty" = "Hozircha faollik yo'q";
+"TeleTwinActivityMention" = "{name} sizni eslatdi · {chat}";
+"TeleTwinActivityThreadReply" = "{name} thread'ingizga javob berdi · {chat}";
+"TeleTwinActivityReaction" = "{name} {emoji} reaksiya qoldirdi · {chat}";
 "TeleTwinWakeUp" = "🦆 Uyg'otish";
 "TeleTwinWakeUpPick" = "🦆 Uyg'otish…";
 "TeleTwinWakeUpPickTitle" = "Kimni uyg'otamiz?";

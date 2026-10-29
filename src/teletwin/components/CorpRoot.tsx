@@ -1,5 +1,6 @@
 import { memo } from '../../lib/teact/teact';
 
+import { CorpActivityModal } from './CorpActivity';
 import CorpDirectPicker from './CorpDirectPicker';
 import CorpGate from './CorpGate';
 import CorpJiraCard from './CorpJiraCard';
@@ -19,6 +20,7 @@ const CorpRoot = () => {
       <CorpDndWakeUpConfirm />
       <CorpReminderPicker />
       <CorpSavedModal />
+      <CorpActivityModal />
     </>
   );
 };
