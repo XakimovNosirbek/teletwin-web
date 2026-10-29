@@ -14,3 +14,6 @@ dev/perf/screenshot*
 
 # TeleTwin: build output is deployed by deploy-web.sh, not tracked
 /dist
+/tauri/target
+/tauri/gen
+/tauri/permissions
