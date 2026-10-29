@@ -1,0 +1,104 @@
+# TeleTwin Android: a Capacitor shell (mobile/) that opens the hosted web app (BASE_URL in
+# mobile/capacitor.config.json), so web deploys update every phone without a new APK.
+# Debug APK is signed with a debug key cached between runs (so updates install over each other);
+# the AAB is unsigned unless the TELETWIN_KEYSTORE_* secrets are set. Keystores are never committed.
+
+name: TeleTwin android
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - teletwin
+      - teletwin-mobile
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/teletwin-android.yml'
+
+concurrency:
+  group: teletwin-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Build APK and AAB
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      TELETWIN_VERSION_CODE: ${{ github.run_number }}
+      TELETWIN_VERSION_NAME: 1.0.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore debug keystore
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: teletwin-android-debug-keystore-v1
+
+      - run: npm ci
+
+      - name: Sync Capacitor project
+        run: npx cap sync android
+
+      - name: Prepare release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.TELETWIN_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/teletwin-release.jks"
+            echo "TELETWIN_KEYSTORE_FILE=$RUNNER_TEMP/teletwin-release.jks" >> "$GITHUB_ENV"
+            echo "Release keystore found: the AAB will be signed"
+          else
+            echo "No release keystore secret: the AAB stays unsigned"
+          fi
+
+      - name: Build debug APK and release AAB
+        working-directory: mobile/android
+        env:
+          TELETWIN_KEYSTORE_PASSWORD: ${{ secrets.TELETWIN_KEYSTORE_PASSWORD }}
+          TELETWIN_KEY_ALIAS: ${{ secrets.TELETWIN_KEY_ALIAS }}
+          TELETWIN_KEY_PASSWORD: ${{ secrets.TELETWIN_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug bundleRelease
+
+      - name: Collect packages
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/debug/app-debug.apk "dist/TeleTwin-$TELETWIN_VERSION_NAME-debug.apk"
+          cp android/app/build/outputs/bundle/release/*.aab "dist/TeleTwin-$TELETWIN_VERSION_NAME-release.aab"
+          ls -l dist
+          sha256sum dist/*
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: TeleTwin-android-apk
+          if-no-files-found: error
+          path: mobile/dist/*.apk
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: TeleTwin-android-aab
+          if-no-files-found: error
+          path: mobile/dist/*.aab
+
+      - name: Remove release keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/teletwin-release.jks"

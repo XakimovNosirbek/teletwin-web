@@ -1,0 +1,16 @@
+{
+  "appId": "uz.dtwin.teletwin",
+  "appName": "TeleTwin",
+  "webDir": "www",
+  "server": {
+    "url": "https://dtwin.uz/teletwin/web/",
+    "cleartext": false,
+    "allowNavigation": ["dtwin.uz"],
+    "errorPath": "offline.html"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": false,
+    "webContentsDebuggingEnabled": false
+  }
+}
