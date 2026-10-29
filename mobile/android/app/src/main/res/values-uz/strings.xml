@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="notification_channel_messages">Xabarlar</string>
+    <string name="download_saved">Saqlandi: %1$s</string>
+    <string name="download_failed">Yuklab bo\'lmadi: %1$s</string>
+    <string name="mic_silenced">Android mikrofonni o\'chirib qo\'ydi: ovozli xabar bo\'sh yoziladi. Mikrofonni ishlatayotgan boshqa ilovalarni yoping va yozish paytida TeleTwin\'ni ochiq tuting.</string>
+</resources>

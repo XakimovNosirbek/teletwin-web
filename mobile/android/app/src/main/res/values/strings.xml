@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TeleTwin</string>
+    <string name="title_activity_main">TeleTwin</string>
+    <string name="package_name">uz.dtwin.teletwin</string>
+    <string name="custom_url_scheme">teletwin</string>
+    <string name="notification_channel_messages">Messages</string>
+    <string name="download_saved">Saved: %1$s</string>
+    <string name="download_failed">Download failed: %1$s</string>
+    <string name="mic_silenced">Android muted the microphone: the voice message will be silent. Close other apps that use the microphone and keep TeleTwin open while recording.</string>
+</resources>
