@@ -14,6 +14,7 @@ import {
 } from './api';
 import { corpEngine } from './engine';
 import { isCorpChatId } from './ids';
+import { setDndWakeUp } from './status';
 import {
   buildCredentialsKey, getDeviceId, loadPendingRegistration, removePendingRegistration, saveCredentials,
   savePendingRegistration,
@@ -233,16 +234,23 @@ export async function openDirectChatWith(employeeId: number) {
   }
 }
 
-export async function wakeUpEmployee(employeeId: number, serverChatId: number | undefined, name: string) {
+export async function wakeUpEmployee(
+  employeeId: number, serverChatId: number | undefined, name: string, force?: boolean,
+) {
   const credentials = corpEngine.credentials;
   if (!credentials) return;
   const actions = getActions();
 
   try {
-    await wakeUpCorpEmployee(credentials.server, credentials.token, employeeId, serverChatId);
+    await wakeUpCorpEmployee(credentials.server, credentials.token, employeeId, serverChatId, force);
     actions.showNotification({ message: { key: 'TeleTwinWakeUpSent', variables: { name } } });
   } catch (err) {
     corpEngine.handleFailure(err);
+    // The target is in "do not disturb": the caller confirms first
+    if (err instanceof CorpApiError && err.status === HTTP_CONFLICT && !force) {
+      setDndWakeUp({ employeeId, serverChatId, name });
+      return;
+    }
     const isTooSoon = err instanceof CorpApiError && err.kind === 'tooMany';
     actions.showNotification({ message: { key: isTooSoon ? 'TeleTwinWakeUpTooSoon' : 'TeleTwinErrorNetwork' } });
   }

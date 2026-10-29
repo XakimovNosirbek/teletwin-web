@@ -57,13 +57,27 @@ export interface CorpPresence {
   lastSeenAt?: string | null;
 }
 
-export interface CorpEmployeeInfo extends CorpPresence {
+export interface CorpStatusFields {
+  statusEmoji?: string | null;
+  statusText?: string | null;
+  statusUntil?: string | null;
+  dndUntil?: string | null;
+}
+
+export interface CorpStatusUpdate {
+  emoji?: string;
+  text?: string;
+  until?: string;
+  dndUntil?: string;
+}
+
+export interface CorpEmployeeInfo extends CorpPresence, CorpStatusFields {
   id: number;
   fullName: string;
   login: string;
 }
 
-export interface CorpMember extends CorpPresence {
+export interface CorpMember extends CorpPresence, CorpStatusFields {
   id: number;
   fullName: string;
   login: string;
@@ -586,6 +600,15 @@ export function fetchCorpJiraIssue(server: string, token: string, key: string) {
   return request<CorpJiraIssue>(server, 'GET', `jira/issues/${encodeURIComponent(key)}`, token);
 }
 
-export function wakeUpCorpEmployee(server: string, token: string, employeeId: number, chatId?: number) {
-  return request<undefined>(server, 'POST', `employees/${employeeId}/wakeup`, token, { chatId });
+export function wakeUpCorpEmployee(
+  server: string, token: string, employeeId: number, chatId?: number, force?: boolean,
+) {
+  return request<undefined>(server, 'POST', `employees/${employeeId}/wakeup`, token, {
+    chatId, force: force || undefined,
+  });
+}
+
+// Replaces the whole status: omitted fields are cleared
+export function putCorpStatus(server: string, token: string, status: CorpStatusUpdate) {
+  return request<CorpStatusFields>(server, 'PUT', 'me/status', token, status);
 }

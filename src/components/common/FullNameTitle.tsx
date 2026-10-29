@@ -25,6 +25,7 @@ import renderText from './helpers/renderText';
 import useLang from '../../hooks/useLang';
 import useLastCallback from '../../hooks/useLastCallback';
 
+import { CorpStatusBadge } from '../../teletwin/components/CorpStatus';
 import Marquee from '../ui/Marquee';
 import Transition from '../ui/Transition';
 import CustomEmoji from './CustomEmoji';
@@ -156,6 +157,7 @@ const FullNameTitle = ({
         <>
           {!noVerified && peer?.isVerified && <VerifiedIcon />}
           {!noFake && peer?.fakeType && <FakeIcon fakeType={peer.fakeType} />}
+          {realPeer && <CorpStatusBadge peerId={realPeer.id} />}
           {canShowEmojiStatus && emojiStatus && (
             <Transition
               className={styles.statusTransition}

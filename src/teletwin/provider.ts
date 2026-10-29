@@ -45,6 +45,7 @@ import {
   buildCorpEntities, buildCorpScheduledMessage, buildCorpText, buildCorpThreadInfo, buildCorpUser, CORP_MUTED_FOREVER,
   encodeWaveform,
 } from './state';
+import { buildCorpStatus, setCorpStatus } from './status';
 
 const SEARCH_LIMIT_MAX = 200;
 const RE_TRAILING_SPACE = /\s+$/;
@@ -809,7 +810,10 @@ async function loadMembers(chat: ApiChat): Promise<ApiChatMember[]> {
   ]));
   global = updateUsers(global, users);
   setGlobal(global);
-  list.forEach((member) => corpEngine.applyPresence({ ...member, employeeId: member.id }));
+  list.forEach((member) => {
+    corpEngine.applyPresence({ ...member, employeeId: member.id });
+    setCorpStatus(member.id, buildCorpStatus(member));
+  });
 
   return list.map(({ id, isAdmin }) => ({
     userId: id === ownId ? global.currentUserId! : buildCorpUserId(id),

@@ -1,0 +1,70 @@
+.badge {
+  overflow: hidden;
+  display: inline-flex;
+  flex-shrink: 1;
+  gap: 0.25rem;
+  align-items: center;
+
+  min-width: 0;
+  margin-inline-start: 0.375rem;
+
+  font-size: 0.8125rem;
+  font-weight: var(--font-weight-normal);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.text {
+  overflow: hidden;
+  max-width: 12rem;
+  text-overflow: ellipsis;
+
+  // The chat list row is too narrow: the emoji is enough there
+  :global(.ListItem.Chat) & {
+    display: none;
+  }
+}
+
+.dnd {
+  font-size: 0.75rem;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.emoji {
+  flex: 0 0 5.5rem;
+}
+
+.caption {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary);
+}
+
+.dateInput {
+  padding: 0.5rem;
+  border: 1px solid var(--color-borders-input);
+  border-radius: var(--border-radius-default-small);
+
+  color: var(--color-text);
+
+  background: var(--color-background);
+}
+
+.buttons {
+  display: flex;
+  gap: 0.5rem;
+
+  > * {
+    flex: 1;
+    width: auto;
+  }
+}

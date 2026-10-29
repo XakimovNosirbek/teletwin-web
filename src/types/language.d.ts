@@ -3405,6 +3405,19 @@ export interface LangPair {
   'TeleTwinDirectPick': undefined;
   'TeleTwinDirectPickTitle': undefined;
   'TeleTwinReplyInThread': undefined;
+  'TeleTwinMyStatus': undefined;
+  'TeleTwinStatusEmoji': undefined;
+  'TeleTwinStatusText': undefined;
+  'TeleTwinStatusUntil': undefined;
+  'TeleTwinStatusUntilHour': undefined;
+  'TeleTwinStatusUntilToday': undefined;
+  'TeleTwinStatusUntilWeek': undefined;
+  'TeleTwinStatusUntilCustom': undefined;
+  'TeleTwinStatusUntilNever': undefined;
+  'TeleTwinStatusDnd': undefined;
+  'TeleTwinStatusSave': undefined;
+  'TeleTwinStatusClear': undefined;
+  'TeleTwinWakeUpAnyway': undefined;
   'TeleTwinWakeUp': undefined;
   'TeleTwinWakeUpPick': undefined;
   'TeleTwinWakeUpPickTitle': undefined;
@@ -5674,6 +5687,9 @@ export interface LangPairWithVariables<V = LangVariable> {
   'TeleTwinWakeUpIncoming': {
     'name': V;
   };
+  'TeleTwinWakeUpDnd': {
+    'name': V;
+  };
 }
 
 export interface LangPairPlural {
@@ -6666,7 +6682,8 @@ export interface LangKeyGroups {
       | 'WalletConnectRequestAppExpired'
       | 'WalletConnectSignTitle'
       | 'TeleTwinWakeUpSent'
-      | 'TeleTwinWakeUpIncoming';
+      | 'TeleTwinWakeUpIncoming'
+      | 'TeleTwinWakeUpDnd';
     variables: 'name';
   };
   'limit,premiumLimit': {

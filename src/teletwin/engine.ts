@@ -3,7 +3,7 @@
 //  - hub: WebSockets only, `access_token` query, `Ready()` after connect, then catch up every loaded chat
 //    with GET messages?afterId=<last id> and GET changes?since=<last sync>
 //  - events: `message`, `message_edited`, `messages_deleted`, `reactions`, `pins`, `read`, `typing`, `wakeup`,
-//    `presence`, `mention`, `poll_updated`, `thread_updated`, `scheduled_changed`, `chats_changed` (reload chats), `logout` (revoke)
+//    `presence`, `status_changed`, `mention`, `poll_updated`, `thread_updated`, `scheduled_changed`, `chats_changed` (reload chats), `logout` (revoke)
 //  - hub closed -> GET me: 401 -> revoke, otherwise reconnect with backoff 1 s, 2 s, 4 s ... 30 s (reset on connect)
 //  - any API 401 -> revoke
 // The engine keeps the loaded corp history (`messagesByChat`) and re-applies it after Telegram syncs replace
@@ -40,6 +40,9 @@ import {
   applyCorpSnapshot, buildCorpMessage, buildCorpPoll, buildCorpReactions, buildCorpThreadInfo, buildCorpThreadInfoFrom,
   buildCorpUser, buildCorpUserStatus, getCorpChatMutedUntil, isCorpDirectChat, isCorpSnapshotApplied, removeCorpData,
 } from './state';
+import {
+  buildCorpStatus, clearCorpStatuses, setCorpStatus,
+} from './status';
 import {
   loadCredentials, loadReadMarks, removeCredentials, saveReadMarks,
 } from './storage';
@@ -256,6 +259,7 @@ class CorpEngine {
     this.pendingByClientId.clear();
     this.linkRule = undefined;
     setCorpGroupMentions([]);
+    clearCorpStatuses();
   }
 
   handleFailure(err: unknown) {
@@ -505,7 +509,10 @@ class CorpEngine {
     try {
       const employees = await fetchCorpEmployees(credentials.server, credentials.token);
       if (epoch !== this.epoch) return;
-      employees.forEach((employee) => this.applyPresence({ ...employee, employeeId: employee.id }));
+      employees.forEach((employee) => {
+        this.applyPresence({ ...employee, employeeId: employee.id });
+        setCorpStatus(employee.id, buildCorpStatus(employee));
+      });
     } catch (err) {
       // An old server has no presence
       if (epoch === this.epoch) this.handleFailure(err);
@@ -920,6 +927,11 @@ class CorpEngine {
     }) => this.applyPoll(chatId, messageId, poll, true));
     on<CorpWakeUp>('wakeup', (wakeUp) => this.onWakeUp?.(wakeUp));
     on<HubPresence>('presence', (presence) => this.applyPresence(presence));
+    on<{ employeeId: number; emoji?: string; text?: string; until?: string; dndUntil?: string }>('status_changed', ({
+      employeeId, emoji, text, until, dndUntil,
+    }) => setCorpStatus(employeeId, buildCorpStatus({
+      statusEmoji: emoji, statusText: text, statusUntil: until, dndUntil,
+    })));
     on<CorpMention>('mention', (mention) => this.applyMention(mention));
     on<unknown>('chats_changed', () => void this.loadChats());
     // Own scheduled messages changed on this or another device, or the server sent one
