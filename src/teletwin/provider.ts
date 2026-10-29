@@ -32,8 +32,8 @@ import { getRichInputAsFormatted } from '../components/ui/textInput/richText';
 import {
   closeCorpPoll, CorpApiError, createCorpScheduled, deleteCorpMessages, deleteCorpScheduled, editCorpMessage,
   editCorpScheduled, fetchCorpMembers, fetchCorpMessages, fetchCorpScheduled, fetchCorpThreadMessages,
-  fetchCorpUnreadMentions, forwardCorpMessages, readCorpChat, readCorpMentions, readCorpThread, sendCorpMessage,
-  sendCorpScheduledNow, sendCorpTyping,
+  fetchCorpUnreadMentions, forwardCorpMessages, readCorpChat, readCorpMentions, readCorpThread, searchCorpMessages,
+  sendCorpMessage, sendCorpScheduledNow, sendCorpTyping,
   setCorpChatNotify, setCorpPin, setCorpReaction, uploadCorpFile, voteCorpPoll,
 } from './api';
 import { corpEngine } from './engine';
@@ -224,6 +224,24 @@ async function searchMessagesInChat({
     totalCount: messages.length < limit ? messages.length : messages.length + 1,
     nextOffsetId: messages.length >= limit ? messages[messages.length - 1].id : undefined,
   };
+}
+
+const GLOBAL_SEARCH_LIMIT = 50;
+const RE_SEARCH_WORD = /[\p{L}\p{N}_]/u;
+
+// The "Messages" tab of the left search: corp results next to the Telegram ones (first page only)
+export async function searchCorpMessagesGlobal(query: string): Promise<ApiMessage[]> {
+  const credentials = corpEngine.credentials;
+  const text = query.trim();
+  if (!credentials || !RE_SEARCH_WORD.test(text)) return [];
+
+  try {
+    const list = await searchCorpMessages(credentials.server, credentials.token, text, GLOBAL_SEARCH_LIMIT);
+    return buildMessages(list.filter((dto) => !dto.isDeleted && corpEngine.getChatInfo(dto.chatId)));
+  } catch (err) {
+    corpEngine.handleFailure(err);
+    return [];
+  }
 }
 
 function buildMessages(list: CorpMessage[]) {

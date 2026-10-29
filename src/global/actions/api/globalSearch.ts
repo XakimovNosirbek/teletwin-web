@@ -13,6 +13,7 @@ import { getTranslationFn } from '../../../util/localization';
 import { formatStarsAsText } from '../../../util/localization/format';
 import { throttle } from '../../../util/schedulers';
 import { callApi } from '../../../api/gramjs';
+import { searchCorpMessagesGlobal } from '../../../teletwin/provider';
 import { addActionHandler, getActions, getGlobal, setGlobal } from '../..';
 import { isChatChannel, isChatGroup } from '../../helpers/chats';
 import { isApiPeerChat } from '../../helpers/peers';
@@ -178,6 +179,19 @@ addActionHandler('checkSearchPostsFlood', async (global, actions, payload): Prom
   setGlobal(global);
 });
 
+function mergeCorpSearchResults<T extends { messages: ApiMessage[]; totalCount: number }>(
+  result: T | undefined, corpMessages?: ApiMessage[],
+): T | undefined {
+  if (!corpMessages?.length) return result;
+  if (!result) return { messages: corpMessages, totalCount: corpMessages.length } as T;
+
+  return {
+    ...result,
+    messages: [...corpMessages, ...result.messages].sort((a, b) => b.date - a.date),
+    totalCount: result.totalCount + corpMessages.length,
+  };
+}
+
 async function searchMessagesGlobal<T extends GlobalState>(global: T, params: {
   query?: string;
   type: ApiGlobalMessageSearchType;
@@ -252,17 +266,23 @@ async function searchMessagesGlobal<T extends GlobalState>(global: T, params: {
       };
     }
   } else {
-    result = await callApi('searchMessagesGlobal', {
-      query,
-      offsetRate,
-      offsetId,
-      offsetPeer,
-      limit: GLOBAL_SEARCH_SLICE,
-      type,
-      context,
-      maxDate,
-      minDate,
-    });
+    // TeleTwin: corp messages join the first page of the "Messages" tab
+    const isFirstTextPage = type === 'text' && !offsetRate && !offsetId && !maxDate && !minDate;
+    const [telegramResult, corpMessages] = await Promise.all([
+      callApi('searchMessagesGlobal', {
+        query,
+        offsetRate,
+        offsetId,
+        offsetPeer,
+        limit: GLOBAL_SEARCH_SLICE,
+        type,
+        context,
+        maxDate,
+        minDate,
+      }),
+      isFirstTextPage ? searchCorpMessagesGlobal(query) : undefined,
+    ]);
+    result = mergeCorpSearchResults(telegramResult, corpMessages);
 
     if (isDeepLink(query)) {
       const link = tryParseDeepLink(query);

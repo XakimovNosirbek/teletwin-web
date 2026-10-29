@@ -25,6 +25,7 @@ import { selectThreadIdFromMessage } from '../../../global/selectors/threads';
 import buildClassName from '../../../util/buildClassName';
 import { type LangFn } from '../../../util/localization';
 import { formatCompactTimestamp, secondsToDate } from '../../../util/localization/dateFormat';
+import { isCorpThreadOnlyMessage } from '../../../teletwin/ids';
 import { REM } from '../../common/helpers/mediaDimensions';
 import { renderMessageSummary } from '../../common/helpers/renderMessageText';
 import renderText from '../../common/helpers/renderText';
@@ -81,8 +82,11 @@ const ChatMessage = ({
   const isRoundVideo = Boolean(getMessageRoundVideo(message));
 
   const handleClick = useLastCallback(() => {
+    // TeleTwin: a corp thread reply opens in its thread
+    const corpThreadId = isCorpThreadOnlyMessage(message)
+      ? (message.replyInfo as { replyToTopId?: number }).replyToTopId : undefined;
     focusMessage({
-      chatId, messageId: message.id, threadId, shouldReplaceHistory: true,
+      chatId, messageId: message.id, threadId: corpThreadId ?? threadId, shouldReplaceHistory: true,
     });
   });
 

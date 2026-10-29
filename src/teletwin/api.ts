@@ -375,6 +375,12 @@ export function fetchCorpMembers(server: string, token: string, chatId: number) 
   return request<CorpMember[]>(server, 'GET', `chats/${chatId}/members`, token);
 }
 
+// Messages of every chat I am in, newest first (main history and thread replies)
+export function searchCorpMessages(server: string, token: string, query: string, limit: number) {
+  const search = new URLSearchParams({ q: query, limit: String(limit) });
+  return request<CorpMessage[]>(server, 'GET', `search?${search.toString()}`, token);
+}
+
 export function fetchCorpMessages(
   server: string,
   token: string,
