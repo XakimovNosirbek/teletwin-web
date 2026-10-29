@@ -37,6 +37,7 @@ import { useFolderManagerForUnreadCounters } from '../../../hooks/useFolderManag
 import useLang from '../../../hooks/useLang';
 import useLastCallback from '../../../hooks/useLastCallback';
 
+import CorpMenuItem from '../../../teletwin/components/CorpMenuItem';
 import AttachBotItem from '../../middle/composer/AttachBotItem';
 import ConfirmDialog from '../../ui/ConfirmDialog';
 import MenuItem from '../../ui/MenuItem';
@@ -217,6 +218,7 @@ const LeftSideMenuItems = ({
       >
         {lang('MenuContacts')}
       </MenuItem>
+      <CorpMenuItem />
       {isWalletAvailable && (
         <MenuItem
           icon="gram-outline"

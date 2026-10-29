@@ -58,6 +58,7 @@ import useBeforeUnload from '../../hooks/window/useBeforeUnload';
 import { useFullscreenStatus } from '../../hooks/window/useFullscreen';
 import { PANE_GAP_REM, type PaneState } from '../middle/hooks/useHeaderPane';
 
+import CorpLoginModal from '../../teletwin/components/CorpLoginModal';
 import ActiveCallHeader from '../calls/ActiveCallHeader.async';
 import GroupCall from '../calls/group/GroupCall.async';
 import PhoneCall from '../calls/phone/PhoneCall.async';
@@ -648,6 +649,7 @@ const Main = ({
       <AudioPlayer noUi />
       <FloatingRoundVideo />
       <ModalContainer />
+      <CorpLoginModal />
       <HistoryCalendar isOpen={isHistoryCalendarOpen} />
       <StickerSetModal
         isOpen={Boolean(openedStickerSetShortName)}
