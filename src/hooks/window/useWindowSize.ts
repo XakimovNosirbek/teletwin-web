@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from '../../lib/teact/teact';
 
+import { IS_ANDROID } from '../../util/browser/windowEnvironment';
 import { throttle } from '../../util/schedulers';
 import windowSize from '../../util/windowSize';
 import useDebouncedCallback from '../useDebouncedCallback';
@@ -14,6 +15,8 @@ export default function useWindowSize() {
   const setIsResizingDebounced = useDebouncedCallback(setIsResizing, [setIsResizing], THROTTLE, true);
 
   useEffect(() => {
+    let lastWidth = window.innerWidth;
+
     const throttledSetIsResizing = throttle(() => {
       setIsResizing(true);
     }, THROTTLE, true);
@@ -25,7 +28,20 @@ export default function useWindowSize() {
       setIsResizingDebounced(false);
     }, THROTTLE, false);
 
+    // On Android a height-only resize is the keyboard opening or closing: report the final height once,
+    // without the `isResizing` true -> false round trip that re-renders every subscriber twice more.
+    const throttledSetHeight = throttle(() => {
+      setHeight(windowSize.get().height);
+    }, THROTTLE, false);
+
     const handleResize = () => {
+      const newWidth = window.innerWidth;
+      if (IS_ANDROID && newWidth === lastWidth) {
+        throttledSetHeight();
+        return;
+      }
+
+      lastWidth = newWidth;
       throttledSetIsResizing();
       throttledSetSize();
     };
