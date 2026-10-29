@@ -78,10 +78,10 @@ async function postCorpText(chatId: string, localId: number, text: string) {
 
     // Both paths turn the pending bubble into the real message unless the hub echo already did (dedupe by id)
     if (corpEngine.hasSession) {
-      corpEngine.applyLive(dto);
+      corpEngine.applyLive(dto, localId);
     } else {
       const chat = getGlobal().chats.byId[chatId];
-      if (chat) publishCorpMessage(dto, buildCorpChatInfo(serverChatId, chat), credentials.employee.id);
+      if (chat) publishCorpMessage(dto, buildCorpChatInfo(serverChatId, chat), credentials.employee.id, localId);
     }
   } catch (err) {
     if (corpEngine.credentials?.token !== credentials.token) return;

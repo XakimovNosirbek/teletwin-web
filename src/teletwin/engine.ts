@@ -346,16 +346,19 @@ class CorpEngine {
     }
   }
 
-  // A message from the hub, a resync page or our own POST response
-  applyLive(dto: CorpMessage) {
+  // A message from the hub, a resync page or our own POST response (`localId` is the pending bubble to resolve)
+  applyLive(dto: CorpMessage, localId?: number) {
     const chat = this.chats.find(({ id }) => id === dto.chatId);
     const list = this.messagesByChat[dto.chatId];
     if (!chat || !list) return;
-    if (list.some(({ id }) => id === dto.id)) return;
+    const isKnown = list.some(({ id }) => id === dto.id);
+    if (isKnown && localId === undefined) return;
 
-    this.mergeMessages(dto.chatId, [dto]);
-    this.snapshot = undefined;
-    publishCorpMessage(dto, chat, this.credentials!.employee.id);
+    if (!isKnown) {
+      this.mergeMessages(dto.chatId, [dto]);
+      this.snapshot = undefined;
+    }
+    publishCorpMessage(dto, chat, this.credentials!.employee.id, localId);
   }
 
   // ---- realtime hub ----
@@ -463,29 +466,37 @@ class CorpEngine {
 
 export const corpEngine = new CorpEngine();
 
-export function publishCorpMessage(dto: CorpMessage, chat: CorpChatInfo, employeeId: number) {
+export function publishCorpMessage(dto: CorpMessage, chat: CorpChatInfo, employeeId: number, localId?: number) {
   let global = getGlobal();
   const chatId = buildCorpChatId(chat.id);
-  if (selectChatMessage(global, chatId, dto.id)) return;
-
   const actions = getActions();
-  const message = buildCorpMessage(dto, chat, employeeId, global.currentUserId!);
+  // `updateMessageSendSucceeded` merges over the pending bubble, so its sending state is cleared explicitly
+  const message: ApiMessage = {
+    ...buildCorpMessage(dto, chat, employeeId, global.currentUserId!),
+    sendingState: undefined,
+  };
   const isOwn = dto.senderId === employeeId;
+
+  if (isOwn) {
+    // The POST answer names its bubble; a hub echo that wins the race matches it by text
+    const pendingId = localId !== undefined && selectChatMessage(global, chatId, localId)
+      ? localId
+      : findPendingMessage(global, chatId, dto.text)?.id;
+    if (pendingId !== undefined) {
+      actions.apiUpdate({
+        '@type': 'updateMessageSendSucceeded', chatId, localId: pendingId, message,
+      });
+      return;
+    }
+  }
+
+  if (selectChatMessage(global, chatId, dto.id)) return;
 
   if (!isOwn) {
     const userId = buildCorpUserId(dto.senderId);
     if (!global.users.byId[userId]) {
       global = updateUsers(global, { [userId]: buildCorpUser(dto.senderId, dto.senderName) });
       setGlobal(global);
-    }
-  } else {
-    // Our own message came back before the POST answered: the pending bubble becomes the real one
-    const pending = findPendingMessage(global, chatId, dto.text);
-    if (pending) {
-      actions.apiUpdate({
-        '@type': 'updateMessageSendSucceeded', chatId, localId: pending.id, message,
-      });
-      return;
     }
   }
 
