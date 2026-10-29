@@ -1,7 +1,7 @@
 # TeleTwin Android: a Capacitor shell (mobile/) that opens the hosted web app (BASE_URL in
 # mobile/capacitor.config.json), so web deploys update every phone without a new APK.
-# TeleTwin-<v>.apk is the one to install: release code (not debuggable, fast) signed with a debug key
-# cached between runs, so updates install over each other and over earlier debug builds.
+# TeleTwin-<v>.apk is the one to install: release code (not debuggable, fast) signed with the tester
+# key from secrets (TELETWIN_TESTER_KEYSTORE_*), so every build installs over the previous one.
 # TeleTwin-<v>-debug.apk is debuggable (WebView inspection on) for diagnostics only.
 # The AAB is unsigned unless the TELETWIN_KEYSTORE_* secrets are set. Keystores are never committed.
 
@@ -48,16 +48,21 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v6
 
-      - name: Restore debug keystore
-        uses: actions/cache@v6
-        with:
-          path: ~/.android/debug.keystore
-          key: teletwin-android-debug-keystore-v1
-
       - run: npm ci
 
       - name: Sync Capacitor project
         run: npx cap sync android
+
+      - name: Prepare tester keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.TELETWIN_TESTER_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/teletwin-tester.jks"
+            echo "TELETWIN_TESTER_KEYSTORE_FILE=$RUNNER_TEMP/teletwin-tester.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No tester keystore secret: APKs get a one-off debug key and will not update earlier installs"
+          fi
 
       - name: Prepare release keystore
         env:
@@ -74,6 +79,7 @@ jobs:
       - name: Build APKs and release AAB
         working-directory: mobile/android
         env:
+          TELETWIN_TESTER_KEYSTORE_PASSWORD: ${{ secrets.TELETWIN_TESTER_KEYSTORE_PASSWORD }}
           TELETWIN_KEYSTORE_PASSWORD: ${{ secrets.TELETWIN_KEYSTORE_PASSWORD }}
           TELETWIN_KEY_ALIAS: ${{ secrets.TELETWIN_KEY_ALIAS }}
           TELETWIN_KEY_PASSWORD: ${{ secrets.TELETWIN_KEY_PASSWORD }}
@@ -102,6 +108,6 @@ jobs:
           if-no-files-found: error
           path: mobile/dist/*.aab
 
-      - name: Remove release keystore
+      - name: Remove keystores
         if: always()
-        run: rm -f "$RUNNER_TEMP/teletwin-release.jks"
+        run: rm -f "$RUNNER_TEMP/teletwin-release.jks" "$RUNNER_TEMP/teletwin-tester.jks"

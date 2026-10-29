@@ -19,7 +19,18 @@ android {
     }
     // Release signing comes only from the environment (CI secrets); the keystore is never committed.
     def releaseKeystore = System.getenv("TELETWIN_KEYSTORE_FILE")
+    // Tester key (CI secret TELETWIN_TESTER_KEYSTORE_*): one stable signature for debug and internal
+    // APKs, so every CI build installs over the previous one. Without it Gradle's local debug key is used.
+    def testerKeystore = System.getenv("TELETWIN_TESTER_KEYSTORE_FILE")
     signingConfigs {
+        if (testerKeystore) {
+            tester {
+                storeFile file(testerKeystore)
+                storePassword System.getenv("TELETWIN_TESTER_KEYSTORE_PASSWORD")
+                keyAlias "tester"
+                keyPassword System.getenv("TELETWIN_TESTER_KEYSTORE_PASSWORD")
+            }
+        }
         if (releaseKeystore) {
             release {
                 storeFile file(releaseKeystore)
@@ -30,6 +41,11 @@ android {
         }
     }
     buildTypes {
+        debug {
+            if (testerKeystore) {
+                signingConfig signingConfigs.tester
+            }
+        }
         release {
             if (releaseKeystore) {
                 signingConfig signingConfigs.release
@@ -38,10 +54,10 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
         // Tester APK: release code (not debuggable, so ART runs the WebView's Java precompiled and
-        // WebView inspection stays off) signed with the debug key, so it installs over debug builds.
+        // WebView inspection stays off) signed with the tester (or local debug) key, not the release key.
         internal {
             initWith release
-            signingConfig signingConfigs.debug
+            signingConfig testerKeystore ? signingConfigs.tester : signingConfigs.debug
             matchingFallbacks = ['release']
         }
     }
