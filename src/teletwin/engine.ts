@@ -3,7 +3,7 @@
 //  - hub: WebSockets only, `access_token` query, `Ready()` after connect, then catch up every loaded chat
 //    with GET messages?afterId=<last id> and GET changes?since=<last sync>
 //  - events: `message`, `message_edited`, `messages_deleted`, `reactions`, `pins`, `read`, `typing`, `wakeup`,
-//    `presence`, `chats_changed` (reload chats), `logout` (revoke)
+//    `presence`, `mention`, `poll_updated`, `chats_changed` (reload chats), `logout` (revoke)
 //  - hub closed -> GET me: 401 -> revoke, otherwise reconnect with backoff 1 s, 2 s, 4 s ... 30 s (reset on connect)
 //  - any API 401 -> revoke
 // The engine keeps the loaded corp history (`messagesByChat`) and re-applies it after Telegram syncs replace
@@ -12,10 +12,10 @@ import type { HubConnection } from '@microsoft/signalr';
 import { HttpTransportType, HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
 import { getActions, getGlobal, setGlobal } from '../global';
 
-import type { ApiMessage, ApiTypingStatus } from '../api/types';
+import type { ApiMessage, ApiMessagePoll, ApiTypingStatus } from '../api/types';
 import type { GlobalState } from '../global/types';
 import type {
-  CorpChatInfo, CorpMention, CorpMessage, CorpPresence, CorpReaction,
+  CorpChatInfo, CorpMention, CorpMessage, CorpPoll, CorpPresence, CorpReaction,
 } from './api';
 import type { CorpLinkRule, CorpSnapshot } from './state';
 import type { CorpCredentials } from './storage';
@@ -23,7 +23,7 @@ import { MAIN_THREAD_ID } from '../api/types';
 
 import { addUserStatuses, updateChat, updateUsers } from '../global/reducers';
 import { replaceThreadLocalStateParam, updateThreadReadState } from '../global/reducers/threads';
-import { selectChatMessage, selectCurrentMessageList } from '../global/selectors';
+import { selectChatMessage, selectCurrentMessageList, selectPoll } from '../global/selectors';
 import { selectThreadLocalStateParam, selectThreadReadState } from '../global/selectors/threads';
 import { getCurrentTabId } from '../util/establishMultitabRole';
 import { getTranslationFn } from '../util/localization';
@@ -33,12 +33,12 @@ import {
   fetchCorpMessages, isCorpUnauthorized, logoutCorp, openCorpDirectChat,
 } from './api';
 import {
-  buildCorpChatId, buildCorpUserId, isCorpChatId, registerCorpDirectChat,
+  buildCorpChatId, buildCorpPollId, buildCorpUserId, isCorpChatId, registerCorpDirectChat,
 } from './ids';
 import { clearCorpMedia } from './media';
 import {
-  applyCorpSnapshot, buildCorpMessage, buildCorpReactions, buildCorpUser, buildCorpUserStatus, isCorpDirectChat,
-  isCorpSnapshotApplied, removeCorpData,
+  applyCorpSnapshot, buildCorpMessage, buildCorpPoll, buildCorpReactions, buildCorpUser, buildCorpUserStatus,
+  isCorpDirectChat, isCorpSnapshotApplied, removeCorpData,
 } from './state';
 import {
   loadCredentials, loadReadMarks, removeCredentials, saveReadMarks,
@@ -333,6 +333,33 @@ class CorpEngine {
     return buildCorpMessage(dto, chat, employee.id, getGlobal().currentUserId!, this.linkRule, employee.login);
   }
 
+  buildPoll(poll: CorpPoll, senderId: number, isFromHub?: boolean): ApiMessagePoll | undefined {
+    if (!this.credentials) return undefined;
+    const global = getGlobal();
+    const current = selectPoll(global, buildCorpPollId(poll.id));
+    const isCreator = senderId === this.employeeId;
+
+    return buildCorpPoll(poll, this.credentials.employee.id, global.currentUserId!, isCreator, current, isFromHub);
+  }
+
+  // Polls of messages the provider returns: GramJS sends them the same way, next to the messages
+  publishEntities(list: CorpMessage[]) {
+    const polls = list.map((dto) => dto.poll && this.buildPoll(dto.poll, dto.senderId)).filter(Boolean);
+    if (!polls.length) return;
+
+    getActions().apiUpdate({ '@type': 'updateEntities', polls });
+  }
+
+  applyPoll(serverChatId: number, messageId: number, corpPoll: CorpPoll, isFromHub?: boolean) {
+    const list = this.messagesByChat[serverChatId];
+    const senderId = list?.find(({ id }) => id === messageId)?.senderId;
+    this.updateCached(serverChatId, messageId, { poll: corpPoll });
+    const poll = this.buildPoll(corpPoll, senderId ?? 0, isFromHub);
+    if (!poll) return;
+
+    getActions().apiUpdate({ '@type': 'updateMessagePoll', pollId: poll.summary.id, pollUpdate: poll });
+  }
+
   ensureSender(employeeId: number, fullName: string) {
     if (employeeId === this.credentials?.employee.id) return;
     const userId = buildCorpUserId(employeeId);
@@ -616,6 +643,7 @@ class CorpEngine {
     const { chatId } = message;
     const global = getGlobal();
     const actions = getActions();
+    const poll = dto.poll ? this.buildPoll(dto.poll, dto.senderId) : undefined;
 
     if (dto.senderId === this.employeeId) {
       // The POST answer names its bubble; a hub echo that wins the race matches it by `clientId`
@@ -632,6 +660,7 @@ class CorpEngine {
           chatId,
           localId: pendingId,
           message: { ...message, sendingState: undefined },
+          poll,
         });
         return;
       }
@@ -640,7 +669,7 @@ class CorpEngine {
     if (selectChatMessage(global, chatId, dto.id)) return;
 
     actions.apiUpdate({
-      '@type': 'newMessage', chatId, id: dto.id, message,
+      '@type': 'newMessage', chatId, id: dto.id, message, poll,
     });
   }
 
@@ -662,7 +691,12 @@ class CorpEngine {
     if (!message || !selectChatMessage(getGlobal(), message.chatId, dto.id)) return;
 
     getActions().apiUpdate({
-      '@type': 'updateMessage', chatId: message.chatId, id: dto.id, message, isFull: true,
+      '@type': 'updateMessage',
+      chatId: message.chatId,
+      id: dto.id,
+      message,
+      isFull: true,
+      poll: dto.poll ? this.buildPoll(dto.poll, dto.senderId) : undefined,
     });
   }
 
@@ -785,6 +819,9 @@ class CorpEngine {
       chatId, employeeId, maxId,
     }) => this.applyRead(chatId, employeeId, maxId));
     on<HubTyping>('typing', (typing) => this.applyTyping(typing));
+    on<{ chatId: number; messageId: number; poll: CorpPoll }>('poll_updated', ({
+      chatId, messageId, poll,
+    }) => this.applyPoll(chatId, messageId, poll, true));
     on<CorpWakeUp>('wakeup', (wakeUp) => this.onWakeUp?.(wakeUp));
     on<HubPresence>('presence', (presence) => this.applyPresence(presence));
     on<CorpMention>('mention', (mention) => this.applyMention(mention));

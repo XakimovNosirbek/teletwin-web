@@ -6,11 +6,11 @@ import { getActions, getGlobal, setGlobal } from '../global';
 
 import type { MethodArgs, Methods } from '../api/gramjs/methods/types';
 import type {
-  ApiAttachment, ApiChat, ApiChatMember, ApiMessage, ApiMessageEntity, ApiOnProgress, ApiPeer, ApiReaction,
-  ApiSendMessageAction, ApiSticker, ApiVideo, MediaContent,
+  ApiAttachment, ApiChat, ApiChatMember, ApiMessage, ApiMessageEntity, ApiMessagePoll, ApiNewPoll, ApiOnProgress,
+  ApiPeer, ApiReaction, ApiSendMessageAction, ApiSticker, ApiVideo, MediaContent,
 } from '../api/types';
 import type { ForwardMessagesParams, SendMessageParams } from '../types';
-import type { CorpMediaKind, CorpMessage } from './api';
+import type { CorpMediaKind, CorpMessage, CorpNewPoll } from './api';
 import { MAIN_THREAD_ID } from '../api/types';
 
 import {
@@ -19,20 +19,22 @@ import {
 } from '../config';
 import { getMediaHash } from '../global/helpers/messageMedia';
 import { updateUsers } from '../global/reducers';
-import { selectChatLastMessageId, selectPinnedIds } from '../global/selectors';
+import {
+  selectChatLastMessageId, selectChatMessage, selectPinnedIds, selectPollFromMessage,
+} from '../global/selectors';
 import { selectMessageDownloadableMedia } from '../global/selectors/media';
 import buildUploadingMedia from '../util/buildUploadingMedia';
 import { getMessageKey } from '../util/keys/messageKey';
 import { getServerTime } from '../util/serverTime';
 import { getRichInputAsFormatted } from '../components/ui/textInput/richText';
 import {
-  CorpApiError, deleteCorpMessages, editCorpMessage, fetchCorpMembers, fetchCorpMessages,
+  closeCorpPoll, CorpApiError, deleteCorpMessages, editCorpMessage, fetchCorpMembers, fetchCorpMessages,
   fetchCorpUnreadMentions, forwardCorpMessages, readCorpChat, readCorpMentions, sendCorpMessage,
-  sendCorpTyping, setCorpPin, setCorpReaction, uploadCorpFile,
+  sendCorpTyping, setCorpPin, setCorpReaction, uploadCorpFile, voteCorpPoll,
 } from './api';
 import { corpEngine } from './engine';
 import {
-  buildCorpUserId, getServerChatId, isCorpChatId,
+  buildCorpUserId, getCorpPollServerId, getServerChatId, isCorpChatId,
 } from './ids';
 import { downloadCorpMedia, fetchMediaBlob } from './media';
 import {
@@ -73,6 +75,9 @@ export const corpMethods: CorpMethods = {
   searchMessagesInChat,
   fetchFullChat,
   fetchMembers,
+  sendPollVote,
+  closePoll,
+  loadPollOptionResults,
   downloadMedia: downloadCorpMedia,
 };
 
@@ -177,6 +182,7 @@ async function searchMessagesInChat({
 }
 
 function buildMessages(list: CorpMessage[]) {
+  corpEngine.publishEntities(list);
   return list.map((dto) => corpEngine.buildMessage(dto)).filter(Boolean);
 }
 
@@ -184,9 +190,10 @@ function buildMessages(list: CorpMessage[]) {
 
 async function sendMessage(params: SendMessageParams, onProgress?: ApiOnProgress) {
   const { chat } = params;
-  if (!chat || params.scheduledAt || params.poll || params.todo || params.contact || params.story) {
+  if (!chat || params.scheduledAt || params.todo || params.contact || params.story) {
     return undefined;
   }
+  if (params.poll) return sendPoll(chat, params.poll, params);
 
   const { text, entities } = getOutgoingText(params);
   const media = getOutgoingMedia(params);
@@ -236,6 +243,29 @@ async function sendMessage(params: SendMessageParams, onProgress?: ApiOnProgress
     corpEngine.handleFailure(err);
     return undefined;
   }
+}
+
+// No pending bubble: a poll appears once the server has it
+async function sendPoll(chat: ApiChat, poll: ApiNewPoll, params: SendMessageParams) {
+  const credentials = corpEngine.credentials!;
+  const dto = await sendCorpMessage(credentials.server, credentials.token, getServerChatId(chat.id), {
+    text: '',
+    replyToId: params.replyInfo?.type === 'message' ? params.replyInfo.replyToMsgId : undefined,
+    poll: buildCorpNewPoll(poll),
+    clientId: `web-${Date.now().toString(36)}-poll`,
+  });
+  corpEngine.applyLive(dto);
+  return corpEngine.buildMessage(dto);
+}
+
+function buildCorpNewPoll({ summary }: ApiNewPoll): CorpNewPoll {
+  return {
+    question: summary.question.text,
+    options: summary.answers.map(({ text }) => text.text),
+    isAnonymous: !summary.isPublic,
+    isMultiple: Boolean(summary.isMultipleChoice),
+    closesAt: summary.closeDate ? new Date(summary.closeDate * 1000).toISOString() : undefined,
+  };
 }
 
 function getOutgoingText(params: SendMessageParams) {
@@ -517,6 +547,52 @@ async function sendMessageAction({ peer, action }: { peer: ApiPeer; action: ApiS
   const credentials = corpEngine.credentials!;
   await sendCorpTyping(credentials.server, credentials.token, getServerChatId(peer.id), corpAction);
   return true;
+}
+
+// ---- polls ----
+
+async function sendPollVote({ chat, messageId, options }: { chat: ApiChat; messageId: number; options: string[] }) {
+  const pollId = getMessagePollServerId(chat, messageId);
+  if (!pollId) return;
+  const credentials = corpEngine.credentials!;
+  const poll = await voteCorpPoll(credentials.server, credentials.token, pollId, options.map(Number));
+  corpEngine.applyPoll(getServerChatId(chat.id), messageId, poll);
+}
+
+async function closePoll({ chat, messageId, poll }: { chat: ApiChat; messageId: number; poll: ApiMessagePoll }) {
+  const pollId = getCorpPollServerId(poll.summary.id);
+  if (!pollId) return;
+  const credentials = corpEngine.credentials!;
+  const result = await closeCorpPoll(credentials.server, credentials.token, pollId);
+  corpEngine.applyPoll(getServerChatId(chat.id), messageId, result);
+}
+
+// Voters of a public poll are already in the poll results
+function loadPollOptionResults({
+  chat, messageId, option,
+}: { chat: ApiChat; messageId: number; option?: string; offset?: string; limit?: number }) {
+  const message = selectChatMessage(getGlobal(), chat.id, messageId);
+  const poll = message && selectPollFromMessage(getGlobal(), message);
+  const serverId = poll && getCorpPollServerId(poll.summary.id);
+  const cached = serverId ? findCachedPoll(chat, messageId) : undefined;
+  const corpOption = cached?.options.find(({ id }) => String(id) === option);
+  const ownId = corpEngine.employeeId;
+  const votes = (corpOption?.voterIds || []).map((id) => ({
+    peerId: id === ownId ? getGlobal().currentUserId! : buildCorpUserId(id),
+    date: 0,
+  }));
+
+  return Promise.resolve({ count: votes.length, votes, nextOffset: undefined });
+}
+
+function findCachedPoll(chat: ApiChat, messageId: number) {
+  return corpEngine.getCachedMessages(getServerChatId(chat.id))?.find(({ id }) => id === messageId)?.poll || undefined;
+}
+
+function getMessagePollServerId(chat: ApiChat, messageId: number) {
+  const message = selectChatMessage(getGlobal(), chat.id, messageId);
+  const poll = message && selectPollFromMessage(getGlobal(), message);
+  return poll ? getCorpPollServerId(poll.summary.id) : undefined;
 }
 
 // ---- chat info ----

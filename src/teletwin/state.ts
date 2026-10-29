@@ -1,10 +1,10 @@
 import type {
-  ApiChat, ApiChatBannedRights, ApiChatFolder, ApiFormattedText, ApiMessage, ApiMessageEntity, ApiReactions, ApiUser,
-  ApiUserStatus, MediaContent,
+  ApiChat, ApiChatBannedRights, ApiChatFolder, ApiFormattedText, ApiMessage, ApiMessageEntity, ApiMessagePoll,
+  ApiPollResult, ApiReactions, ApiUser, ApiUserStatus, MediaContent,
 } from '../api/types';
 import type { GlobalState } from '../global/types';
 import type {
-  CorpChatInfo, CorpEmployee, CorpEntity, CorpMedia, CorpMessage, CorpPresence, CorpReaction,
+  CorpChatInfo, CorpEmployee, CorpEntity, CorpMedia, CorpMessage, CorpPoll, CorpPresence, CorpReaction,
 } from './api';
 import { ApiMessageEntityTypes, MAIN_THREAD_ID } from '../api/types';
 
@@ -15,16 +15,17 @@ import {
   updateChatLastMessageId,
   updateChats,
   updateListedIds,
+  updatePoll,
   updateUsers,
 } from '../global/reducers';
 import { replaceThreadLocalStateParam, updateThreadInfo, updateThreadReadState } from '../global/reducers/threads';
-import { selectChatLastMessageId, selectChatMessages } from '../global/selectors';
+import { selectChatLastMessageId, selectChatMessages, selectPoll } from '../global/selectors';
 import { selectThread, selectThreadReadState } from '../global/selectors/threads';
 import { omit } from '../util/iteratees';
 import { CORP_CHAT_KIND_CHANNEL, CORP_CHAT_KIND_DIRECT } from './api';
 import {
-  buildCorpChatId, buildCorpMediaId, buildCorpUserId, CORP_FOLDER_ID, CORP_MENTION_ALL_ID, CORP_MENTION_HERE_ID,
-  getEmployeeId, isCorpChatId, isCorpMentionKeywordId, isCorpPeerId, isCorpUserId,
+  buildCorpChatId, buildCorpMediaId, buildCorpPollId, buildCorpUserId, CORP_FOLDER_ID, CORP_MENTION_ALL_ID,
+  CORP_MENTION_HERE_ID, getEmployeeId, isCorpChatId, isCorpMentionKeywordId, isCorpPeerId, isCorpUserId,
 } from './ids';
 
 const MS_IN_SECOND = 1000;
@@ -43,7 +44,6 @@ const ONLINE_EXPIRES = 24 * 60 * 60;
 const UNSUPPORTED_RIGHTS: ApiChatBannedRights = {
   sendGames: true,
   sendInline: true,
-  sendPolls: true,
   changeInfo: true,
   inviteUsers: true,
   manageTopics: true,
@@ -62,6 +62,7 @@ const READ_ONLY_RIGHTS: ApiChatBannedRights = {
   sendAudios: true,
   sendVoices: true,
   sendDocs: true,
+  sendPolls: true,
 };
 
 export interface CorpSnapshot {
@@ -156,8 +157,10 @@ export function buildCorpMessage(
     senderId: isOwn ? telegramUserId : (isChannel ? chatId : buildCorpUserId(dto.senderId)),
     postAuthorTitle: isChannel ? dto.senderName : undefined,
     content: {
-      text: dto.text ? buildCorpText(dto.text, dto.entities, linkRule) : undefined,
+      // A poll message carries its question as text for v1 clients
+      text: dto.text && !dto.poll ? buildCorpText(dto.text, dto.entities, linkRule) : undefined,
       ...(dto.media && buildCorpMediaContent(dto.media)),
+      pollId: dto.poll ? buildCorpPollId(dto.poll.id) : undefined,
     },
     replyInfo: dto.replyToId ? { type: 'message', replyToMsgId: dto.replyToId } : undefined,
     forwardInfo: dto.forward ? {
@@ -171,6 +174,51 @@ export function buildCorpMessage(
     reactions: dto.reactions?.length ? buildCorpReactions(dto.reactions, employeeId) : undefined,
     isForwardingAllowed: true,
     hasUnreadMention: hasUnreadMention || undefined,
+  };
+}
+
+// `chosen` is per caller and always `false` in hub payloads: public polls name the voters, anonymous ones keep
+// the choice already known
+export function buildCorpPoll(
+  poll: CorpPoll, employeeId: number, telegramUserId: string, isCreator: boolean, current?: ApiMessagePoll,
+  isFromHub?: boolean,
+): ApiMessagePoll {
+  const toPeerId = (id: number) => (id === employeeId ? telegramUserId : buildCorpUserId(id));
+  const resultByOption: Record<string, ApiPollResult> = {};
+  poll.options.forEach(({
+    id, votes, chosen, voterIds,
+  }) => {
+    const option = String(id);
+    const isChosen = voterIds ? voterIds.includes(employeeId)
+      : isFromHub ? current?.results.resultByOption?.[option]?.isChosen : chosen;
+    resultByOption[option] = {
+      option,
+      votersCount: votes,
+      isChosen: isChosen || undefined,
+      recentVoterIds: voterIds?.slice(0, 3).map(toPeerId),
+    };
+  });
+  const recentVoterIds = poll.isAnonymous ? undefined
+    : [...new Set(poll.options.flatMap(({ voterIds }) => voterIds || []))].slice(0, 3).map(toPeerId);
+
+  return {
+    mediaType: 'poll',
+    summary: {
+      id: buildCorpPollId(poll.id),
+      hash: '0',
+      isClosed: poll.isClosed || undefined,
+      isPublic: !poll.isAnonymous || undefined,
+      isMultipleChoice: poll.isMultiple || undefined,
+      isCreator: isCreator || current?.summary.isCreator || undefined,
+      question: { text: poll.question },
+      answers: poll.options.map(({ id, text }) => ({ text: { text }, option: String(id) })),
+      closeDate: poll.closesAt ? parseCorpDate(poll.closesAt) : undefined,
+    },
+    results: {
+      resultByOption,
+      totalVoters: poll.totalVoters,
+      recentVoterIds,
+    },
   };
 }
 
@@ -506,6 +554,12 @@ function applyCorpHistory<T extends GlobalState>(
       );
     }
   }
+
+  list.forEach((dto) => {
+    if (!dto.poll || selectPoll(global, buildCorpPollId(dto.poll.id))) return;
+    const poll = buildCorpPoll(dto.poll, employee.id, telegramUserId, dto.senderId === employee.id);
+    global = updatePoll(global, poll.summary.id, poll);
+  });
 
   if (missing.length) {
     const newById: Record<number, ApiMessage> = {};

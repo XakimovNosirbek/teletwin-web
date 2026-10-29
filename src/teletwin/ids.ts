@@ -108,3 +108,14 @@ export function isCorpMentionKeywordId(userId: string) {
 export function getEmployeeId(corpUserId: string) {
   return Number(corpUserId) - CORP_BARE_BASE;
 }
+
+// Corp polls live in the same `pollById` store as Telegram ones, under ids Telegram never uses
+const CORP_POLL_PREFIX = 'teletwin-corp-poll:';
+
+export function buildCorpPollId(serverPollId: number) {
+  return `${CORP_POLL_PREFIX}${serverPollId}`;
+}
+
+export function getCorpPollServerId(pollId: string) {
+  return pollId.startsWith(CORP_POLL_PREFIX) ? Number(pollId.slice(CORP_POLL_PREFIX.length)) : undefined;
+}

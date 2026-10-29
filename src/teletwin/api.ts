@@ -132,6 +132,36 @@ export interface CorpMessage {
   reactions?: CorpReaction[];
   isPinned?: boolean;
   clientId?: string;
+  poll?: CorpPoll | null;
+}
+
+export interface CorpPollOption {
+  id: number;
+  text: string;
+  votes: number;
+  // The caller's choice; always `false` in hub payloads
+  chosen?: boolean;
+  // `null` for anonymous polls
+  voterIds?: number[] | null;
+}
+
+export interface CorpPoll {
+  id: number;
+  question: string;
+  isAnonymous: boolean;
+  isMultiple: boolean;
+  closesAt?: string | null;
+  isClosed: boolean;
+  totalVoters: number;
+  options: CorpPollOption[];
+}
+
+export interface CorpNewPoll {
+  question: string;
+  options: string[];
+  isAnonymous: boolean;
+  isMultiple: boolean;
+  closesAt?: string | null;
 }
 
 export interface CorpChanges {
@@ -146,6 +176,7 @@ export interface CorpNewMessage {
   replyToId?: number;
   fileId?: string;
   clientId?: string;
+  poll?: CorpNewPoll;
 }
 
 export interface CorpUploadResult {
@@ -336,6 +367,14 @@ export function readCorpChat(server: string, token: string, chatId: number, maxI
 
 export function sendCorpTyping(server: string, token: string, chatId: number, action: string) {
   return request<undefined>(server, 'POST', `chats/${chatId}/typing`, token, { action });
+}
+
+export function voteCorpPoll(server: string, token: string, pollId: number, optionIds: number[]) {
+  return request<CorpPoll>(server, 'PUT', `polls/${pollId}/vote`, token, { optionIds });
+}
+
+export function closeCorpPoll(server: string, token: string, pollId: number) {
+  return request<CorpPoll>(server, 'POST', `polls/${pollId}/close`, token);
 }
 
 // XHR instead of `fetch`: only XHR reports upload progress
