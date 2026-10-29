@@ -58,6 +58,7 @@ import useLastCallback from '../../hooks/useLastCallback';
 import usePrevDuringAnimation from '../../hooks/usePrevDuringAnimation';
 import useShowTransitionDeprecated from '../../hooks/useShowTransitionDeprecated';
 
+import { CorpWakeUpHeaderItem } from '../../teletwin/components/CorpWakeUp';
 import DeleteChatModal from '../common/DeleteChatModal';
 import AutoDeleteOutlinedIcon from '../common/icons/AutoDeleteOutlinedIcon';
 import Icon from '../common/icons/Icon';
@@ -643,6 +644,7 @@ const HeaderMenuContainer = ({
           onClose={closeMenu}
           shouldCloseFast={shouldCloseFast}
         >
+          <CorpWakeUpHeaderItem chatId={chatId} onClose={closeMenu} />
           {isMobile && canSearch && (
             <MenuItem
               icon="search"

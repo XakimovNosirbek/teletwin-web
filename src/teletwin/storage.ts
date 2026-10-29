@@ -5,6 +5,8 @@ import type { CorpEmployee } from './api';
 const CREDENTIALS_PREFIX = 'teletwin.corp.';
 const READ_PREFIX = 'teletwin.read.';
 const DEVICE_KEY = 'teletwin.device';
+// A registration waiting for approval: kept in `sessionStorage` only, it holds the chosen password
+const PENDING_PREFIX = 'teletwin.pending.';
 const DEVICE_ID_BYTES = 12;
 const HEX_RADIX = 16;
 
@@ -12,6 +14,38 @@ export interface CorpCredentials {
   server: string;
   token: string;
   employee: CorpEmployee;
+}
+
+export interface PendingRegistration {
+  server: string;
+  login: string;
+  password: string;
+}
+
+export function loadPendingRegistration(telegramUserId: string): PendingRegistration | undefined {
+  try {
+    const raw = sessionStorage.getItem(`${PENDING_PREFIX}${telegramUserId}`);
+    const parsed = raw ? JSON.parse(raw) as PendingRegistration : undefined;
+    return parsed?.server && parsed.login && parsed.password ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function savePendingRegistration(telegramUserId: string, pending: PendingRegistration) {
+  try {
+    sessionStorage.setItem(`${PENDING_PREFIX}${telegramUserId}`, JSON.stringify(pending));
+  } catch {
+    // Blocked storage: the waiting screen lasts until reload
+  }
+}
+
+export function removePendingRegistration(telegramUserId: string) {
+  try {
+    sessionStorage.removeItem(`${PENDING_PREFIX}${telegramUserId}`);
+  } catch {
+    // Blocked storage has nothing to remove
+  }
 }
 
 export function buildCredentialsKey(telegramUserId: string) {

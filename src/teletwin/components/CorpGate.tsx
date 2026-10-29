@@ -1,10 +1,12 @@
 import type { ChangeEvent, FormEvent } from 'react';
 import { memo, useState } from '../../lib/teact/teact';
 
-import type { CorpLoginError } from '../index';
+import type { CorpLoginError, CorpRegisterError } from '../index';
 
+import buildClassName from '../../util/buildClassName';
 import {
-  DEFAULT_CORP_SERVER, getIsCorpLoginOpen, loginToCorp, setIsCorpLoginOpen,
+  cancelPendingRegistration, DEFAULT_CORP_SERVER, getCorpCredentials, getCorpTelegramUserId,
+  getPendingRegistration, getRegistrationError, loginToCorp, logoutFromTelegram, registerInCorp,
 } from '../index';
 
 import useDerivedState from '../../hooks/useDerivedState';
@@ -14,40 +16,44 @@ import useLastCallback from '../../hooks/useLastCallback';
 
 import Button from '../../components/ui/Button';
 import InputText from '../../components/ui/InputText';
-import Modal from '../../components/ui/Modal';
+import Spinner from '../../components/ui/Spinner';
 
-import styles from './CorpLoginModal.module.scss';
+import styles from './CorpGate.module.scss';
 
-// Company login: a separate session on the TeleTwin server, next to the Telegram account
-const CorpLoginModal = () => {
+type Mode = 'login' | 'register';
+type GateError = CorpLoginError | CorpRegisterError | 'TeleTwinErrorPasswordMismatch' | 'TeleTwinErrorPasswordShort';
+
+const PASSWORD_MIN_LENGTH = 8;
+
+// Blocks the whole app until the Telegram account is linked to an approved corp account
+const CorpGate = () => {
   const lang = useLang();
-  const isOpen = useDerivedState(getIsCorpLoginOpen);
+  const telegramUserId = useDerivedState(getCorpTelegramUserId);
+  const credentials = useDerivedState(getCorpCredentials);
+  const pending = useDerivedState(getPendingRegistration);
+  const registrationError = useDerivedState(getRegistrationError);
+
+  const [mode, setMode] = useState<Mode>('login');
   const [server, setServer] = useState(DEFAULT_CORP_SERVER);
+  const [fullName, setFullName] = useState('');
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<CorpLoginError | undefined>();
+  const [passwordRepeat, setPasswordRepeat] = useState('');
+  const [note, setNote] = useState('');
+  const [error, setError] = useState<GateError | undefined>();
   const [isLoading, markLoading, unmarkLoading] = useFlag();
 
-  const canSubmit = Boolean(server.trim() && login.trim() && password) && !isLoading;
+  const isRegister = mode === 'register';
+  const canSubmit = Boolean(server.trim() && login.trim() && password) && !isLoading
+    && (!isRegister || Boolean(fullName.trim() && passwordRepeat));
 
-  const handleServerChange = useLastCallback((e: ChangeEvent<HTMLInputElement>) => {
-    setServer(e.target.value);
+  const handleChange = useLastCallback((setter: (value: string) => void) => (e: ChangeEvent<HTMLInputElement>) => {
+    setter(e.target.value);
     setError(undefined);
   });
 
-  const handleLoginChange = useLastCallback((e: ChangeEvent<HTMLInputElement>) => {
-    setLogin(e.target.value);
-    setError(undefined);
-  });
-
-  const handlePasswordChange = useLastCallback((e: ChangeEvent<HTMLInputElement>) => {
-    setPassword(e.target.value);
-    setError(undefined);
-  });
-
-  const handleClose = useLastCallback(() => {
-    setIsCorpLoginOpen(false);
-    setPassword('');
+  const handleModeChange = useLastCallback((newMode: Mode) => {
+    setMode(newMode);
     setError(undefined);
   });
 
@@ -55,66 +61,155 @@ const CorpLoginModal = () => {
     e.preventDefault();
     if (!canSubmit) return;
 
+    if (isRegister) {
+      if (password.length < PASSWORD_MIN_LENGTH) {
+        setError('TeleTwinErrorPasswordShort');
+        return;
+      }
+      if (password !== passwordRepeat) {
+        setError('TeleTwinErrorPasswordMismatch');
+        return;
+      }
+    }
+
     markLoading();
-    const loginError = await loginToCorp(server, login, password);
+    const submitError = isRegister
+      ? await registerInCorp(server, {
+        fullName, login, password, note,
+      })
+      : await loginToCorp(server, login, password);
     unmarkLoading();
 
-    if (loginError) {
-      setError(loginError);
+    if (submitError && submitError !== 'TeleTwinPending') {
+      setError(submitError);
       return;
     }
 
-    handleClose();
+    setPassword('');
+    setPasswordRepeat('');
   });
 
-  return (
-    <Modal
-      className={styles.root}
-      title={lang('TeleTwinLoginTitle')}
-      isOpen={isOpen}
-      hasCloseButton
-      onClose={handleClose}
-    >
-      <form className={styles.form} onSubmit={handleSubmit}>
-        <InputText
-          id="teletwin-server"
-          label={lang('TeleTwinServer')}
-          value={server}
-          inputMode="url"
-          onChange={handleServerChange}
+  const handleBack = useLastCallback(() => {
+    cancelPendingRegistration();
+  });
+
+  const handleTelegramLogout = useLastCallback(() => {
+    logoutFromTelegram();
+  });
+
+  if (!telegramUserId || credentials) return undefined;
+
+  function renderPassword(
+    id: string, value: string, label: string, onChange: (e: ChangeEvent<HTMLInputElement>) => void,
+  ) {
+    return (
+      <div className={buildClassName('input-group with-label', value && 'touched')}>
+        <input
+          id={id}
+          className="form-control"
+          type="password"
+          value={value}
+          autoComplete={isRegister ? 'new-password' : 'current-password'}
+          aria-label={label}
+          onChange={onChange}
         />
-        <InputText
-          id="teletwin-login"
-          label={lang('TeleTwinLogin')}
-          value={login}
-          autoComplete="username"
-          autoFocus
-          onChange={handleLoginChange}
-        />
-        <div className={`input-group with-label${password ? ' touched' : ''}`}>
-          <input
-            id="teletwin-password"
-            className="form-control"
-            type="password"
-            value={password}
-            autoComplete="current-password"
-            aria-label={lang('TeleTwinPassword')}
-            onChange={handlePasswordChange}
-          />
-          <label htmlFor="teletwin-password">{lang('TeleTwinPassword')}</label>
-        </div>
-        {error && <p className={styles.error} role="alert">{lang(error)}</p>}
-        <div className="dialog-buttons">
-          <Button type="submit" isText inline isLoading={isLoading} disabled={!canSubmit}>
+        <label htmlFor={id}>{label}</label>
+      </div>
+    );
+  }
+
+  function renderPending() {
+    return (
+      <div className={styles.pending}>
+        <Spinner className={styles.spinner} />
+        <p className={styles.pendingText}>{lang('TeleTwinPending')}</p>
+        <Button isText onClick={handleBack}>{lang('TeleTwinBack')}</Button>
+      </div>
+    );
+  }
+
+  function renderForm() {
+    const shownError = error || registrationError;
+
+    return (
+      <>
+        <div className={styles.tabs} role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={!isRegister}
+            className={buildClassName(styles.tab, !isRegister && styles.tabActive)}
+            onClick={() => handleModeChange('login')}
+          >
             {lang('TeleTwinSignIn')}
-          </Button>
-          <Button isText inline onClick={handleClose}>
-            {lang('TeleTwinCancel')}
-          </Button>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={isRegister}
+            className={buildClassName(styles.tab, isRegister && styles.tabActive)}
+            onClick={() => handleModeChange('register')}
+          >
+            {lang('TeleTwinTabRegister')}
+          </button>
         </div>
-      </form>
-    </Modal>
+        <form className={styles.form} onSubmit={handleSubmit}>
+          <InputText
+            id="teletwin-server"
+            label={lang('TeleTwinServer')}
+            value={server}
+            inputMode="url"
+            onChange={handleChange(setServer)}
+          />
+          {isRegister && (
+            <InputText
+              id="teletwin-full-name"
+              label={lang('TeleTwinFullName')}
+              value={fullName}
+              autoComplete="name"
+              onChange={handleChange(setFullName)}
+            />
+          )}
+          <InputText
+            id="teletwin-login"
+            label={lang('TeleTwinLogin')}
+            value={login}
+            autoComplete="username"
+            onChange={handleChange(setLogin)}
+          />
+          {renderPassword('teletwin-password', password, lang('TeleTwinPassword'), handleChange(setPassword))}
+          {isRegister && renderPassword(
+            'teletwin-password-repeat', passwordRepeat, lang('TeleTwinPasswordRepeat'), handleChange(setPasswordRepeat),
+          )}
+          {isRegister && (
+            <InputText
+              id="teletwin-note"
+              label={lang('TeleTwinNote')}
+              value={note}
+              onChange={handleChange(setNote)}
+            />
+          )}
+          {shownError && <p className={styles.error} role="alert">{lang(shownError)}</p>}
+          <Button type="submit" isLoading={isLoading} disabled={!canSubmit}>
+            {lang(isRegister ? 'TeleTwinRegister' : 'TeleTwinSignIn')}
+          </Button>
+        </form>
+      </>
+    );
+  }
+
+  return (
+    <div className={styles.root} role="dialog" aria-modal="true">
+      <div className={styles.card}>
+        <h1 className={styles.title}>{lang('TeleTwinFolderTitle')}</h1>
+        <p className={styles.subtitle}>{lang('TeleTwinGateSubtitle')}</p>
+        {pending ? renderPending() : renderForm()}
+        <Button className={styles.telegramLogout} isText color="danger" onClick={handleTelegramLogout}>
+          {lang('TeleTwinTelegramLogOut')}
+        </Button>
+      </div>
+    </div>
   );
 };
 
-export default memo(CorpLoginModal);
+export default memo(CorpGate);
