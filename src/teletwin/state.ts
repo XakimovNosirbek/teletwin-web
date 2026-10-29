@@ -248,6 +248,9 @@ export function buildCorpThreadInfoFrom(
     isCommentsInfo: false,
     chatId,
     threadId: rootId,
+    // Marks a "message thread" (not channel comments): the stock composer then allows replies of channel members,
+    // see `getCanPostInChat`; without `fromMessageId` the stock code never treats it as a discussion-group thread
+    fromChannelId: chatId,
     messagesCount: replyCount,
     recentReplierIds: recentReplierIds?.map((id) => (id === employeeId ? telegramUserId : buildCorpUserId(id))),
   };

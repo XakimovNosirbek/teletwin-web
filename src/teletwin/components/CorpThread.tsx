@@ -11,6 +11,9 @@ import useLastCallback from '../../hooks/useLastCallback';
 
 import MenuItem from '../../components/ui/MenuItem';
 
+// Corp groups and channels: any member may reply in a thread, also in channels (like channel comments)
+const CORP_THREAD_CHAT_TYPES = new Set<string | undefined>(['chatTypeSuperGroup', 'chatTypeChannel']);
+
 type OwnProps = {
   message: ApiMessage;
   threadId: ThreadId;
@@ -18,7 +21,7 @@ type OwnProps = {
   onClose: NoneToVoidFunction;
 };
 
-// Message context menu of corp groups: opens the stock thread view of a message, also before its first reply
+// Message context menu of corp groups and channels: opens the stock thread view of a message, also before its first reply
 export const CorpReplyInThreadItem = ({
   message, threadId, messageListType, onClose,
 }: OwnProps) => {
@@ -32,7 +35,7 @@ export const CorpReplyInThreadItem = ({
 
   if (!isCorpChatId(chatId) || messageListType !== 'thread' || threadId !== MAIN_THREAD_ID
     || message.isScheduled || !Number.isInteger(id) || isCorpThreadOnlyMessage(message)
-    || getGlobal().chats.byId[chatId]?.type !== 'chatTypeSuperGroup') {
+    || !CORP_THREAD_CHAT_TYPES.has(getGlobal().chats.byId[chatId]?.type)) {
     return undefined;
   }
 

@@ -27,6 +27,7 @@ import {
 import { getPeerIdDividend, isUserId } from '../../util/entities/ids';
 import { formatDateTime, secondsToDate } from '../../util/localization/dateFormat';
 import { getServerTime } from '../../util/serverTime';
+import { isCorpChatId } from '../../teletwin/ids';
 import { selectIsChatRestricted } from '../selectors';
 import { getGlobal } from '..';
 import { isSystemBot } from './bots';
@@ -179,7 +180,8 @@ export function getCanPostInChat(
   }
 
   if (isChatChannel(chat)) {
-    return getHasAdminRight(chat, 'postMessages');
+    // TeleTwin: any member of a corp channel may reply in a thread of a post
+    return getHasAdminRight(chat, 'postMessages') || Boolean(isMessageThread && isCorpChatId(chat.id));
   }
 
   return isChatAdmin(chat) || !isUserRightBanned(chat, 'sendMessages', chatFullInfo);

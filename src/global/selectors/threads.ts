@@ -4,6 +4,7 @@ import { type ApiMessage, MAIN_THREAD_ID } from '../../api/types';
 
 import { ANONYMOUS_USER_ID, GENERAL_TOPIC_ID } from '../../config';
 import { getCurrentTabId } from '../../util/establishMultitabRole';
+import { isCorpThreadOnlyMessage } from '../../teletwin/ids';
 import { isChatBasicGroup, isChatSuperGroup } from '../helpers';
 import { getMessageForumTopicId, getMessageReplyInfo } from '../helpers/replies';
 import { selectChat } from './chats';
@@ -169,6 +170,8 @@ export function selectThreadIdFromMessage<T extends GlobalState>(global: T, mess
     if (chat && isChatSuperGroup(chat)) {
       return replyToTopId || replyToMsgId || MAIN_THREAD_ID;
     }
+    // TeleTwin: corp channels have threads too, their replies belong to the thread
+    if (replyToTopId && isCorpThreadOnlyMessage(message)) return replyToTopId;
     return MAIN_THREAD_ID;
   }
   return getMessageForumTopicId(message);
