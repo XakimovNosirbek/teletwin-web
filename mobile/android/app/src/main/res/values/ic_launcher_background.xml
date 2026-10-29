@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#3A54D6</color>
+    <color name="splash_background">#3A54D6</color>
+    <!-- Behind the web app until it reports its theme: light #ffffff, dark #212121 (the web app values) -->
+    <color name="window_background">#FFFFFF</color>
+</resources>
