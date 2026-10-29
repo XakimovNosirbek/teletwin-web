@@ -4539,6 +4539,7 @@
 "TeleTwinTelegramLogOut" = "Telegram akkauntidan chiqish";
 "TeleTwinDirectPick" = "Xodimga yozish";
 "TeleTwinDirectPickTitle" = "Kimga yozamiz?";
+"TeleTwinMentionIncoming" = "{name} sizni eslatdi: {text}";
 "TeleTwinWakeUp" = "🦆 Uyg'otish";
 "TeleTwinWakeUpPick" = "🦆 Uyg'otish…";
 "TeleTwinWakeUpPickTitle" = "Kimni uyg'otamiz?";

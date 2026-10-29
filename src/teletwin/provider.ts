@@ -26,8 +26,9 @@ import { getMessageKey } from '../util/keys/messageKey';
 import { getServerTime } from '../util/serverTime';
 import { getRichInputAsFormatted } from '../components/ui/textInput/richText';
 import {
-  CorpApiError, deleteCorpMessages, editCorpMessage, fetchCorpMembers, fetchCorpMessages, forwardCorpMessages,
-  readCorpChat, sendCorpMessage, sendCorpTyping, setCorpPin, setCorpReaction, uploadCorpFile,
+  CorpApiError, deleteCorpMessages, editCorpMessage, fetchCorpMembers, fetchCorpMessages,
+  fetchCorpUnreadMentions, forwardCorpMessages, readCorpChat, readCorpMentions, sendCorpMessage,
+  sendCorpTyping, setCorpPin, setCorpReaction, uploadCorpFile,
 } from './api';
 import { corpEngine } from './engine';
 import {
@@ -66,6 +67,8 @@ export const corpMethods: CorpMethods = {
   pinMessage,
   unpinAllMessages,
   markMessageListRead,
+  markMessagesRead,
+  fetchUnreadMentions,
   sendMessageAction,
   searchMessagesInChat,
   fetchFullChat,
@@ -488,6 +491,24 @@ async function markMessageListRead({ chat, maxId }: { chat: ApiChat; threadId: u
   if (!maxId || !Number.isInteger(maxId)) return;
   const credentials = corpEngine.credentials!;
   await readCorpChat(credentials.server, credentials.token, getServerChatId(chat.id), maxId);
+}
+
+// Stock code marks mentions read through `markMessagesRead` once they are seen
+async function markMessagesRead({ chat, messageIds }: { chat: ApiChat; messageIds: number[] }) {
+  const credentials = corpEngine.credentials!;
+  await readCorpMentions(credentials.server, credentials.token, getServerChatId(chat.id), messageIds);
+}
+
+async function fetchUnreadMentions({ chat, threadId }: { chat: ApiChat; threadId?: unknown }) {
+  if (threadId) return { messages: [], topics: [], totalCount: 0 };
+  const credentials = corpEngine.credentials!;
+  const list = await fetchCorpUnreadMentions(credentials.server, credentials.token, getServerChatId(chat.id));
+  const messages = list
+    .map((dto) => corpEngine.buildMessage(dto))
+    .filter(Boolean)
+    .map((message) => ({ ...message, hasUnreadMention: true }));
+
+  return { messages, topics: [], totalCount: messages.length };
 }
 
 async function sendMessageAction({ peer, action }: { peer: ApiPeer; action: ApiSendMessageAction }) {

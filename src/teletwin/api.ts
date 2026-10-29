@@ -88,6 +88,18 @@ export interface CorpEntity {
   url?: string;
   language?: string;
   userId?: string;
+  // `mentionName`: the mentioned employee
+  employeeId?: number;
+}
+
+export interface CorpMention {
+  chatId: number;
+  messageId: number;
+  threadRootId?: number | null;
+  fromId: number;
+  fromName: string;
+  text: string;
+  reason: string;
 }
 
 export interface CorpReaction {
@@ -258,6 +270,14 @@ export function fetchCorpEmployees(server: string, token: string) {
 
 export function openCorpDirectChat(server: string, token: string, employeeId: number) {
   return request<CorpChatInfo>(server, 'POST', 'chats/direct', token, { employeeId });
+}
+
+export function fetchCorpUnreadMentions(server: string, token: string, chatId: number) {
+  return request<CorpMessage[]>(server, 'GET', `chats/${chatId}/mentions?unread=1&limit=100`, token);
+}
+
+export function readCorpMentions(server: string, token: string, chatId: number, ids?: number[]) {
+  return request<undefined>(server, 'POST', `chats/${chatId}/mentions/read`, token, ids ? { ids } : {});
 }
 
 export function fetchCorpMembers(server: string, token: string, chatId: number) {

@@ -1,5 +1,6 @@
 import { getActions, getGlobal } from '../global';
 
+import type { CorpMention } from './api';
 import type { CorpWakeUp } from './engine';
 
 import { getTranslationFn } from '../util/localization';
@@ -61,6 +62,33 @@ export function handleWakeUp({ fromName, chatId }: CorpWakeUp) {
   showSystemNotification(text, corpChatId);
 }
 
+// Mentions alert even in muted chats, unless the chat is open in front of the user
+export function handleMention({
+  chatId, messageId, fromName, text,
+}: CorpMention) {
+  const corpChatId = buildCorpChatId(chatId);
+  const global = getGlobal();
+  const isVisible = document.visibilityState === 'visible';
+  const tabs = Object.values(global.byTabId);
+  if (isVisible && tabs.some(({ messageLists }) => messageLists[messageLists.length - 1]?.chatId === corpChatId)) {
+    return;
+  }
+
+  const message = getTranslationFn()('TeleTwinMentionIncoming', { name: fromName, text });
+  const actions = getActions();
+  tabs.forEach(({ id: tabId }) => {
+    actions.showNotification({
+      message,
+      duration: NOTIFICATION_DURATION,
+      actionText: { key: 'TeleTwinWakeUpOpen' },
+      action: { action: 'focusMessage', payload: { chatId: corpChatId, messageId, tabId } },
+      tabId,
+    });
+  });
+
+  if (!isVisible) showSystemNotification(message, corpChatId, 'teletwin-mention');
+}
+
 function readIsMuted() {
   try {
     return localStorage.getItem(MUTED_KEY) === '1';
@@ -113,11 +141,11 @@ function shakeApp() {
   ], { duration: SHAKE_DURATION, easing: 'ease-in-out' });
 }
 
-function showSystemNotification(text: string, corpChatId?: string) {
+function showSystemNotification(text: string, corpChatId?: string, tag = 'teletwin-wakeup') {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
 
   try {
-    const notification = new Notification(text, { tag: 'teletwin-wakeup', requireInteraction: false });
+    const notification = new Notification(text, { tag, requireInteraction: false });
     notification.onclick = () => {
       window.focus();
       if (corpChatId) getActions().openChat({ id: corpChatId });

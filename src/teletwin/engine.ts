@@ -14,7 +14,9 @@ import { getActions, getGlobal, setGlobal } from '../global';
 
 import type { ApiMessage, ApiTypingStatus } from '../api/types';
 import type { GlobalState } from '../global/types';
-import type { CorpChatInfo, CorpMessage, CorpPresence, CorpReaction } from './api';
+import type {
+  CorpChatInfo, CorpMention, CorpMessage, CorpPresence, CorpReaction,
+} from './api';
 import type { CorpLinkRule, CorpSnapshot } from './state';
 import type { CorpCredentials } from './storage';
 import { MAIN_THREAD_ID } from '../api/types';
@@ -94,6 +96,8 @@ class CorpEngine {
   onBindChange?: (telegramUserId?: string) => void;
 
   onWakeUp?: (wakeUp: CorpWakeUp) => void;
+
+  onMention?: (mention: CorpMention) => void;
 
   linkRule?: CorpLinkRule;
 
@@ -325,7 +329,8 @@ class CorpEngine {
 
     this.ensureSender(dto.senderId, dto.senderName);
 
-    return buildCorpMessage(dto, chat, this.credentials.employee.id, getGlobal().currentUserId!, this.linkRule);
+    const { employee } = this.credentials;
+    return buildCorpMessage(dto, chat, employee.id, getGlobal().currentUserId!, this.linkRule, employee.login);
   }
 
   ensureSender(employeeId: number, fullName: string) {
@@ -425,6 +430,23 @@ class CorpEngine {
     setGlobal(global);
   }
 
+  // A mention of me: the "@" counter of the main history (thread reply alerts are not counted) and the alert
+  applyMention(mention: CorpMention) {
+    const chatId = buildCorpChatId(mention.chatId);
+    let global = getGlobal();
+    const readState = selectThreadReadState(global, chatId, MAIN_THREAD_ID);
+    if (!mention.threadRootId && readState && !readState.unreadMentions?.includes(mention.messageId)) {
+      global = updateThreadReadState(global, chatId, MAIN_THREAD_ID, {
+        unreadMentionsCount: (readState.unreadMentionsCount || 0) + 1,
+        unreadMentions: readState.unreadMentions
+          ? [...readState.unreadMentions, mention.messageId].sort((a, b) => b - a) : undefined,
+      });
+      setGlobal(global);
+    }
+
+    this.onMention?.(mention);
+  }
+
   // Opens (or creates) the direct chat with an employee and returns its chat id
   async openDirectChat(employeeId: number) {
     const credentials = this.credentials;
@@ -481,6 +503,13 @@ class CorpEngine {
       if (!global.chats.byId[chatId]) return;
       if (chat.memberCount !== undefined) global = updateChat(global, chatId, { membersCount: chat.memberCount });
       const readState = selectThreadReadState(global, chatId, MAIN_THREAD_ID);
+      if (readState && chat.unreadMentionsCount !== undefined
+        && (readState.unreadMentionsCount || 0) !== chat.unreadMentionsCount) {
+        global = updateThreadReadState(global, chatId, MAIN_THREAD_ID, {
+          unreadMentionsCount: chat.unreadMentionsCount || undefined,
+          unreadMentions: chat.unreadMentionsCount ? readState.unreadMentions : undefined,
+        });
+      }
       if (chat.readMaxId && readState && (readState.lastReadOutboxMessageId ?? 0) < chat.readMaxId) {
         global = updateThreadReadState(global, chatId, MAIN_THREAD_ID, { lastReadOutboxMessageId: chat.readMaxId });
       }
@@ -758,6 +787,7 @@ class CorpEngine {
     on<HubTyping>('typing', (typing) => this.applyTyping(typing));
     on<CorpWakeUp>('wakeup', (wakeUp) => this.onWakeUp?.(wakeUp));
     on<HubPresence>('presence', (presence) => this.applyPresence(presence));
+    on<CorpMention>('mention', (mention) => this.applyMention(mention));
     on<unknown>('chats_changed', () => void this.loadChats());
     on<unknown>('logout', () => {
       this.isHubWanted = false;

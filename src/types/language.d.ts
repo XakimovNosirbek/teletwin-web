@@ -5663,6 +5663,10 @@ export interface LangPairWithVariables<V = LangVariable> {
   'PeerPickerUnknownPeer': {
     'id': V;
   };
+  'TeleTwinMentionIncoming': {
+    'name': V;
+    'text': V;
+  };
   'TeleTwinWakeUpSent': {
     'name': V;
   };
@@ -7902,6 +7906,11 @@ export interface LangKeyGroups {
     keys:
       | 'PeerPickerUnknownPeer';
     variables: 'id';
+  };
+  'name,text': {
+    keys:
+      | 'TeleTwinMentionIncoming';
+    variables: 'name' | 'text';
   };
 }
 

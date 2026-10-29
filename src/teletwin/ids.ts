@@ -97,6 +97,14 @@ export function parseCorpMediaHash(hash: string) {
   return { fileId: match[1], thumbFileId: match[2] as string | undefined, query: match[3] || '' };
 }
 
+// Mention tooltip entries for `@all` and `@here`: employee ids no real employee gets
+export const CORP_MENTION_ALL_ID = buildCorpUserId(2 ** 32 - 1);
+export const CORP_MENTION_HERE_ID = buildCorpUserId(2 ** 32 - 2);
+
+export function isCorpMentionKeywordId(userId: string) {
+  return userId === CORP_MENTION_ALL_ID || userId === CORP_MENTION_HERE_ID;
+}
+
 export function getEmployeeId(corpUserId: string) {
   return Number(corpUserId) - CORP_BARE_BASE;
 }

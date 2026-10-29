@@ -23,7 +23,8 @@ import { selectThread, selectThreadReadState } from '../global/selectors/threads
 import { omit } from '../util/iteratees';
 import { CORP_CHAT_KIND_CHANNEL, CORP_CHAT_KIND_DIRECT } from './api';
 import {
-  buildCorpChatId, buildCorpMediaId, buildCorpUserId, CORP_FOLDER_ID, isCorpChatId, isCorpPeerId, isCorpUserId,
+  buildCorpChatId, buildCorpMediaId, buildCorpUserId, CORP_FOLDER_ID, CORP_MENTION_ALL_ID, CORP_MENTION_HERE_ID,
+  getEmployeeId, isCorpChatId, isCorpMentionKeywordId, isCorpPeerId, isCorpUserId,
 } from './ids';
 
 const MS_IN_SECOND = 1000;
@@ -34,6 +35,7 @@ const VIDEO_STICKER_MIME = 'video/webm';
 const STICKER_SIZE = 512;
 const DEFAULT_MIME = 'application/octet-stream';
 const MAX_BYTE = 255;
+const RE_REGEXP_SPECIAL = /[.*+?^${}()|[\]\\]/g;
 // Online employees stay online until a hub `presence` event says otherwise
 const ONLINE_EXPIRES = 24 * 60 * 60;
 
@@ -138,8 +140,10 @@ export function buildCorpUserStatus(presence: CorpPresence): ApiUserStatus | und
 
 export function buildCorpMessage(
   dto: CorpMessage, chat: CorpChatInfo, employeeId: number, telegramUserId: string, linkRule?: CorpLinkRule,
+  login?: string,
 ): ApiMessage {
   const isOwn = dto.senderId === employeeId;
+  const hasUnreadMention = !isOwn && dto.id > (chat.lastReadId ?? 0) && isCorpMentionOf(dto, employeeId, login);
   const isChannel = chat.kind === CORP_CHAT_KIND_CHANNEL;
   const chatId = buildCorpChatId(chat.id);
 
@@ -166,6 +170,39 @@ export function buildCorpMessage(
     isPinned: dto.isPinned || undefined,
     reactions: dto.reactions?.length ? buildCorpReactions(dto.reactions, employeeId) : undefined,
     isForwardingAllowed: true,
+    hasUnreadMention: hasUnreadMention || undefined,
+  };
+}
+
+// The same sources the server counts: a `mentionName` entity, `@login`, `@all` and `@here`
+function isCorpMentionOf(dto: CorpMessage, employeeId: number, login?: string) {
+  if (dto.entities?.some((entity) => entity.type === 'mentionName'
+    && (entity.employeeId ?? Number(entity.userId)) === employeeId)) {
+    return true;
+  }
+  if (!dto.text?.includes('@')) return false;
+
+  const names = ['all', 'here', ...(login ? [login.replace(RE_REGEXP_SPECIAL, '\\$&')] : [])];
+  return new RegExp(`(?:^|[^\\w@])@(?:${names.join('|')})(?![a-z0-9])`, 'i').test(dto.text);
+}
+
+// Tooltip entries that insert `@all` and `@here`
+export function buildCorpMentionKeywordUsers(): Record<string, ApiUser> {
+  return {
+    [CORP_MENTION_ALL_ID]: buildMentionKeywordUser(CORP_MENTION_ALL_ID, 'all'),
+    [CORP_MENTION_HERE_ID]: buildMentionKeywordUser(CORP_MENTION_HERE_ID, 'here'),
+  };
+}
+
+function buildMentionKeywordUser(id: string, keyword: string): ApiUser {
+  return {
+    id,
+    isMin: false,
+    type: 'userTypeRegular',
+    firstName: `@${keyword}`,
+    usernames: [{ username: keyword, isActive: true, isEditable: false }],
+    phoneNumber: '',
+    noStatus: true,
   };
 }
 
@@ -296,8 +333,18 @@ function buildCorpMediaContent(media: CorpMedia): MediaContent {
 // Entities are stored Telegram-style: `MessageEntityBold` <-> `bold`. Custom emoji are Telegram documents and stay out.
 export function buildCorpEntities(entities?: ApiMessageEntity[]): CorpEntity[] | undefined {
   const result = entities
-    ?.filter((entity) => entity.type !== ApiMessageEntityTypes.CustomEmoji)
-    .map((entity) => {
+    // Plain `@name` stays text (the server finds `@login`, `@all`, `@here` itself); Telegram users are not employees
+    ?.filter((entity) => entity.type !== ApiMessageEntityTypes.CustomEmoji
+      && entity.type !== ApiMessageEntityTypes.Mention
+      && (entity.type !== ApiMessageEntityTypes.MentionName
+        || (isCorpUserId(entity.userId) && !isCorpMentionKeywordId(entity.userId))))
+    .map((entity): CorpEntity => {
+      if (entity.type === ApiMessageEntityTypes.MentionName) {
+        return {
+          type: 'mentionName', offset: entity.offset, length: entity.length, employeeId: getEmployeeId(entity.userId),
+        };
+      }
+
       const name = entity.type.slice(ENTITY_TYPE_PREFIX.length);
       return {
         type: name.charAt(0).toLowerCase() + name.slice(1),
@@ -313,8 +360,13 @@ export function buildCorpEntities(entities?: ApiMessageEntity[]): CorpEntity[] |
 
 function buildApiEntities(entities: CorpEntity[]): ApiMessageEntity[] {
   return entities.map(({
-    type, offset, length, url, language,
-  }) => ({
+    type, offset, length, url, language, employeeId, userId,
+  }) => (type === 'mentionName' ? {
+    type: ApiMessageEntityTypes.MentionName,
+    offset,
+    length,
+    userId: buildCorpUserId(employeeId ?? Number(userId)),
+  } : {
     type: `${ENTITY_TYPE_PREFIX}${type.charAt(0).toUpperCase()}${type.slice(1)}` as ApiMessageEntityTypes,
     offset,
     length,
@@ -361,6 +413,7 @@ export function applyCorpSnapshot<T extends GlobalState>(global: T, snapshot: Co
       }
     });
   });
+  if (!global.users.byId[CORP_MENTION_ALL_ID]) Object.assign(usersById, buildCorpMentionKeywordUsers());
   chats.forEach((chat) => {
     if (isCorpDirectChat(chat) && !global.users.byId[buildCorpUserId(chat.peerId)]) {
       usersById[buildCorpUserId(chat.peerId)] = buildCorpUser(chat.peerId, chat.title);
@@ -389,7 +442,7 @@ export function applyCorpSnapshot<T extends GlobalState>(global: T, snapshot: Co
   chats.forEach((chat) => {
     const list = messagesByChat[chat.id];
     if (list) {
-      global = applyCorpHistory(global, chat, list, employee.id, telegramUserId, readMarks[chat.id], linkRule);
+      global = applyCorpHistory(global, chat, list, employee, telegramUserId, readMarks[chat.id], linkRule);
     }
   });
 
@@ -420,7 +473,7 @@ function applyCorpHistory<T extends GlobalState>(
   global: T,
   chat: CorpChatInfo,
   list: CorpMessage[],
-  employeeId: number,
+  employee: CorpEmployee,
   telegramUserId: string,
   readMark: number | undefined,
   linkRule: CorpLinkRule | undefined,
@@ -440,11 +493,12 @@ function applyCorpHistory<T extends GlobalState>(
     });
 
     const lastRead = Math.max(readMark ?? 0, chat.lastReadId ?? 0) || lastId;
-    const unreadCount = list.filter((dto) => dto.id > lastRead && dto.senderId !== employeeId).length;
+    const unreadCount = list.filter((dto) => dto.id > lastRead && dto.senderId !== employee.id).length;
     global = updateThreadReadState(global, chatId, MAIN_THREAD_ID, {
       lastReadInboxMessageId: lastRead,
       lastReadOutboxMessageId: chat.readMaxId,
       unreadCount,
+      unreadMentionsCount: chat.unreadMentionsCount || undefined,
     });
     if (chat.pinnedIds?.length) {
       global = replaceThreadLocalStateParam(
@@ -456,7 +510,7 @@ function applyCorpHistory<T extends GlobalState>(
   if (missing.length) {
     const newById: Record<number, ApiMessage> = {};
     missing.forEach((dto) => {
-      newById[dto.id] = buildCorpMessage(dto, chat, employeeId, telegramUserId, linkRule);
+      newById[dto.id] = buildCorpMessage(dto, chat, employee.id, telegramUserId, linkRule, employee.login);
     });
     global = addChatMessagesById(global, chatId, newById);
   }
