@@ -38,7 +38,7 @@ import {
 import { clearCorpMedia } from './media';
 import {
   applyCorpSnapshot, buildCorpMessage, buildCorpPoll, buildCorpReactions, buildCorpThreadInfo, buildCorpThreadInfoFrom,
-  buildCorpUser, buildCorpUserStatus, isCorpDirectChat, isCorpSnapshotApplied, removeCorpData,
+  buildCorpUser, buildCorpUserStatus, getCorpChatMutedUntil, isCorpDirectChat, isCorpSnapshotApplied, removeCorpData,
 } from './state';
 import {
   loadCredentials, loadReadMarks, removeCredentials, saveReadMarks,
@@ -581,10 +581,31 @@ class CorpEngine {
     }
     this.commit();
     if (!isInitial) this.applyChatStates(chats);
+    this.applyNotifySettings(chats);
 
     chats.filter((chat) => !this.messagesByChat[chat.id]).forEach((chat) => {
       void this.loadHistory(chat.id);
     });
+  }
+
+  // The corp notification setting as the stock mute state: the chat list badge, the header and notifications
+  applyNotifySettings(chats: CorpChatInfo[]) {
+    const global = getGlobal();
+    const actions = getActions();
+    chats.forEach((chat) => {
+      const chatId = buildCorpChatId(chat.id);
+      const mutedUntil = getCorpChatMutedUntil(chat);
+      if ((global.chats.notifyExceptionById?.[chatId]?.mutedUntil ?? 0) === mutedUntil) return;
+      actions.apiUpdate({ '@type': 'updateChatNotifySettings', chatId, settings: { mutedUntil } });
+    });
+  }
+
+  updateNotifySetting(serverChatId: number, notifyLevel: CorpChatInfo['notifyLevel'], mutedUntil?: string | null) {
+    const chat = this.getChatInfo(serverChatId);
+    if (!chat) return;
+    chat.notifyLevel = notifyLevel;
+    chat.mutedUntil = mutedUntil;
+    this.applyNotifySettings([chat]);
   }
 
   // Read marks, pins and member counts of chats that are already in global state

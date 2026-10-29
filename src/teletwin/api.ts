@@ -45,7 +45,12 @@ export interface CorpChatInfo {
   // Direct chats: the other employee
   peerId?: number | null;
   unreadMentionsCount?: number;
+  // The caller's own notification setting
+  notifyLevel?: CorpNotifyLevel;
+  mutedUntil?: string | null;
 }
+
+export type CorpNotifyLevel = 'all' | 'mentions' | 'none';
 
 export interface CorpPresence {
   isOnline?: boolean;
@@ -566,6 +571,15 @@ export interface CorpUserGroup {
 
 export function fetchCorpGroups(server: string, token: string) {
   return request<CorpUserGroup[]>(server, 'GET', 'groups', token);
+}
+
+export function setCorpChatNotify(
+  server: string, token: string, chatId: number,
+  settings: { level?: CorpNotifyLevel; mutedUntil?: string; unmute?: boolean },
+) {
+  return request<{ notifyLevel: CorpNotifyLevel; mutedUntil?: string | null }>(
+    server, 'PUT', `chats/${chatId}/notify`, token, settings,
+  );
 }
 
 export function fetchCorpJiraIssue(server: string, token: string, key: string) {

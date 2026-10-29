@@ -1,6 +1,6 @@
 import type {
   ApiChat, ApiChatBannedRights, ApiChatFolder, ApiFormattedText, ApiMessage, ApiMessageEntity, ApiMessagePoll,
-  ApiMessageThreadInfo, ApiPollResult, ApiReactions, ApiUser, ApiUserStatus, MediaContent,
+  ApiMessageThreadInfo, ApiPeerNotifySettings, ApiPollResult, ApiReactions, ApiUser, ApiUserStatus, MediaContent,
 } from '../api/types';
 import type { GlobalState } from '../global/types';
 import type {
@@ -13,6 +13,7 @@ import { ALL_FOLDER_ID } from '../config';
 import {
   addChatListIds,
   addChatMessagesById,
+  addNotifyExceptions,
   updateChatLastMessageId,
   updateChats,
   updateListedIds,
@@ -118,6 +119,16 @@ export function buildCorpChat(info: CorpChatInfo): ApiChat {
   };
 }
 
+// Stock mute = the corp level `mentions` (plain messages are silent, mentions still alert) or a timed mute;
+// `none` silences everything, the server then sends no mention events either
+export const CORP_MUTED_FOREVER = 2 ** 31 - 1;
+
+export function getCorpChatMutedUntil(chat: Pick<CorpChatInfo, 'notifyLevel' | 'mutedUntil'>) {
+  if (chat.notifyLevel === 'mentions' || chat.notifyLevel === 'none') return CORP_MUTED_FOREVER;
+  const mutedUntil = chat.mutedUntil ? parseCorpDate(chat.mutedUntil) : 0;
+  return mutedUntil > Date.now() / MS_IN_SECOND ? mutedUntil : 0;
+}
+
 export function buildCorpUser(employeeId: number, fullName: string): ApiUser {
   const name = fullName.trim();
   const space = name.indexOf(' ');
@@ -177,6 +188,8 @@ export function buildCorpMessage(
     reactions: dto.reactions?.length ? buildCorpReactions(dto.reactions, employeeId) : undefined,
     isForwardingAllowed: true,
     hasUnreadMention: hasUnreadMention || undefined,
+    // Mentions alert even in a muted chat, unless notifications of the chat are off entirely
+    isMentioned: (!isOwn && chat.notifyLevel !== 'none' && isCorpMentionOf(dto, employeeId, login)) || undefined,
   };
 }
 
@@ -561,6 +574,15 @@ export function applyCorpSnapshot<T extends GlobalState>(global: T, snapshot: Co
 
   global = applyCorpFolder(global, chats, folderTitle);
 
+  // The Telegram chat list load replaces all notify exceptions: the corp mute state is put back
+  const notifyExceptions = chats.reduce((result: Record<string, ApiPeerNotifySettings>, chat) => {
+    const chatId = buildCorpChatId(chat.id);
+    const mutedUntil = getCorpChatMutedUntil(chat);
+    if ((global.chats.notifyExceptionById?.[chatId]?.mutedUntil ?? 0) !== mutedUntil) result[chatId] = { mutedUntil };
+    return result;
+  }, {});
+  if (Object.keys(notifyExceptions).length) global = addNotifyExceptions(global, notifyExceptions);
+
   chats.forEach((chat) => {
     const list = messagesByChat[chat.id];
     if (list) {
@@ -668,6 +690,7 @@ export function isCorpSnapshotApplied(global: GlobalState, snapshot: CorpSnapsho
     const chatId = buildCorpChatId(chat.id);
     if (!global.chats.byId[chatId]) return false;
     if (activeIds && !activeIds.includes(chatId)) return false;
+    if ((global.chats.notifyExceptionById?.[chatId]?.mutedUntil ?? 0) !== getCorpChatMutedUntil(chat)) return false;
 
     const list = snapshot.messagesByChat[chat.id];
     if (!list) return true;

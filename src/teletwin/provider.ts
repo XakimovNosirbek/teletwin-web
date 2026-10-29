@@ -7,7 +7,7 @@ import { getActions, getGlobal, setGlobal } from '../global';
 import type { MethodArgs, Methods } from '../api/gramjs/methods/types';
 import type {
   ApiAttachment, ApiChat, ApiChatMember, ApiMessage, ApiMessageEntity, ApiMessagePoll, ApiNewPoll, ApiOnProgress,
-  ApiPeer, ApiReaction, ApiSendMessageAction, ApiSticker, ApiVideo, MediaContent,
+  ApiPeer, ApiPeerNotifySettings, ApiReaction, ApiSendMessageAction, ApiSticker, ApiVideo, MediaContent,
 } from '../api/types';
 import type { ForwardMessagesParams, SendMessageParams, ThreadId } from '../types';
 import type {
@@ -34,7 +34,7 @@ import {
   editCorpScheduled, fetchCorpMembers, fetchCorpMessages, fetchCorpScheduled, fetchCorpThreadMessages,
   fetchCorpUnreadMentions, forwardCorpMessages, readCorpChat, readCorpMentions, readCorpThread, sendCorpMessage,
   sendCorpScheduledNow, sendCorpTyping,
-  setCorpPin, setCorpReaction, uploadCorpFile, voteCorpPoll,
+  setCorpChatNotify, setCorpPin, setCorpReaction, uploadCorpFile, voteCorpPoll,
 } from './api';
 import { corpEngine } from './engine';
 import {
@@ -42,7 +42,8 @@ import {
 } from './ids';
 import { downloadCorpMedia, fetchMediaBlob } from './media';
 import {
-  buildCorpEntities, buildCorpScheduledMessage, buildCorpText, buildCorpThreadInfo, buildCorpUser, encodeWaveform,
+  buildCorpEntities, buildCorpScheduledMessage, buildCorpText, buildCorpThreadInfo, buildCorpUser, CORP_MUTED_FOREVER,
+  encodeWaveform,
 } from './state';
 
 const SEARCH_LIMIT_MAX = 200;
@@ -80,6 +81,7 @@ export const corpMethods: CorpMethods = {
   searchMessagesInChat,
   fetchFullChat,
   fetchMembers,
+  updateChatNotifySettings,
   sendPollVote,
   closePoll,
   loadPollOptionResults,
@@ -695,6 +697,26 @@ async function deleteScheduledMessages({ chat, messageIds }: { chat: ApiChat; me
     deleteCorpScheduled(credentials.server, credentials.token, serverChatId, id)
   )));
   getActions().apiUpdate({ '@type': 'deleteScheduledMessages', chatId: chat.id, ids: messageIds });
+}
+
+// ---- notifications ----
+
+// The stock mute switch: "mute forever" keeps mentions alerting (level `mentions`), a timed mute silences plain
+// messages until then, unmute returns to `all`
+async function updateChatNotifySettings({
+  chat, settings,
+}: { chat: ApiChat; settings: Partial<ApiPeerNotifySettings> }) {
+  if (settings.mutedUntil === undefined) return;
+  const credentials = corpEngine.credentials!;
+  const serverChatId = getServerChatId(chat.id);
+  const { mutedUntil } = settings;
+  const isMuted = mutedUntil > Date.now() / 1000;
+  const result = await setCorpChatNotify(credentials.server, credentials.token, serverChatId, !isMuted
+    ? { level: 'all', unmute: true }
+    : mutedUntil >= CORP_MUTED_FOREVER
+      ? { level: 'mentions', unmute: true }
+      : { level: 'all', mutedUntil: new Date(mutedUntil * 1000).toISOString() });
+  corpEngine.updateNotifySetting(serverChatId, result.notifyLevel, result.mutedUntil);
 }
 
 // ---- polls ----
