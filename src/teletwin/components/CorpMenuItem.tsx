@@ -15,6 +15,7 @@ import useLastCallback from '../../hooks/useLastCallback';
 
 import MenuItem from '../../components/ui/MenuItem';
 import NestedMenuItem from '../../components/ui/NestedMenuItem';
+import { setDirectoryOpen } from './CorpDirectory';
 
 import styles from './CorpPanels.module.scss';
 
@@ -75,6 +76,9 @@ const CorpMenuItem = () => {
           </MenuItem>
           <MenuItem icon="smile" onClick={handleOpenStatus}>
             {lang('TeleTwinMyStatus')}
+          </MenuItem>
+          <MenuItem icon="channel" onClick={() => setDirectoryOpen(true)}>
+            {lang('TeleTwinDirectoryTitle')}
           </MenuItem>
           <MenuItem icon="mention" onClick={() => setActivityModalOpen(true)}>
             {lang('TeleTwinActivityTitle')}

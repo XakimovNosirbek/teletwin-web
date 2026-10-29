@@ -4583,6 +4583,11 @@
 "TeleTwinProfilePhone" = "Telefon";
 "TeleTwinProfileBirthday" = "Tug'ilgan kun";
 "TeleTwinProfileWorkHours" = "Ish vaqti";
+"TeleTwinDirectoryTitle" = "Kanallar katalogi";
+"TeleTwinDirectoryEmpty" = "Qo'shilish mumkin bo'lgan ochiq kanal yoki guruh yo'q";
+"TeleTwinDirectoryJoin" = "Qo'shilish";
+"TeleTwinDirectoryMembers" = "{count} a'zo";
+"TeleTwinDirectorySubscribers" = "{count} obunachi";
 "TeleTwinWakeUp" = "🦆 Uyg'otish";
 "TeleTwinWakeUpPick" = "🦆 Uyg'otish…";
 "TeleTwinWakeUpPickTitle" = "Kimni uyg'otamiz?";

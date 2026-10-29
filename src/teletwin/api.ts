@@ -672,6 +672,23 @@ export function updateCorpMe(server: string, token: string, body: { phone?: stri
   return request<CorpEmployeeInfo>(server, 'PATCH', 'me', token, body);
 }
 
+export interface CorpDirectoryChat {
+  id: number;
+  title: string;
+  kind: number;
+  description?: string | null;
+  memberCount: number;
+  isMember: boolean;
+}
+
+export function fetchCorpDirectory(server: string, token: string) {
+  return request<CorpDirectoryChat[]>(server, 'GET', 'chats/directory', token);
+}
+
+export function joinCorpChat(server: string, token: string, chatId: number) {
+  return request<undefined>(server, 'POST', `chats/${chatId}/join`, token);
+}
+
 export function fetchCorpJiraIssue(server: string, token: string, key: string) {
   return request<CorpJiraIssue>(server, 'GET', `jira/issues/${encodeURIComponent(key)}`, token);
 }

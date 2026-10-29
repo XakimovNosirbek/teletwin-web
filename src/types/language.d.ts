@@ -3442,6 +3442,9 @@ export interface LangPair {
   'TeleTwinProfilePhone': undefined;
   'TeleTwinProfileBirthday': undefined;
   'TeleTwinProfileWorkHours': undefined;
+  'TeleTwinDirectoryTitle': undefined;
+  'TeleTwinDirectoryEmpty': undefined;
+  'TeleTwinDirectoryJoin': undefined;
   'TeleTwinWakeUp': undefined;
   'TeleTwinWakeUpPick': undefined;
   'TeleTwinWakeUpPickTitle': undefined;
@@ -5716,6 +5719,12 @@ export interface LangPairWithVariables<V = LangVariable> {
   };
   'TeleTwinReminderIncoming': {
     'text': V;
+  };
+  'TeleTwinDirectoryMembers': {
+    'count': V;
+  };
+  'TeleTwinDirectorySubscribers': {
+    'count': V;
   };
   'TeleTwinActivityMention': {
     'name': V;
