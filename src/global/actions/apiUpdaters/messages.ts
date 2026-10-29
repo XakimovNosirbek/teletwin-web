@@ -25,6 +25,7 @@ import { notifyAboutMessage } from '../../../util/notifications';
 import { onTickEnd } from '../../../util/schedulers';
 import { getServerTime } from '../../../util/serverTime';
 import { callApi } from '../../../api/gramjs';
+import { isCorpChatId, isCorpThreadOnlyMessage } from '../../../teletwin/ids';
 import {
   addPaidReaction,
   checkIfHasUnreadReactions,
@@ -1533,14 +1534,16 @@ function updateListedAndViewportIds<T extends GlobalState>(
     if (threadInfo) {
       global = updateThreadInfoLastMessageId(global, chatId, threadId, message.id);
 
-      if (!isMessageLocal(message) && !isActionMessage(message)) {
+      // TeleTwin: corp reply counters come from the server (`thread_updated`)
+      if (!isMessageLocal(message) && !isActionMessage(message) && !isCorpChatId(chatId)) {
         const newCount = (threadInfo.messagesCount || 0) + 1;
         global = updateThreadInfoMessagesCount(global, chatId, threadId, newCount);
       }
     }
   }
 
-  if (isUnreadChatNotLoaded) {
+  // TeleTwin: corp thread replies stay out of the main history
+  if (isUnreadChatNotLoaded || isCorpThreadOnlyMessage(message)) {
     return global;
   }
 
@@ -1572,6 +1575,8 @@ function updateChatLastMessage<T extends GlobalState>(
 
   const threadId = selectThreadIdFromMessage(global, message);
   global = updateThreadInfoLastMessageId(global, chatId, threadId, message.id);
+  // TeleTwin: a corp thread reply is not the last message of the chat
+  if (isCorpThreadOnlyMessage(message)) return global;
 
   const savedDialogId = selectSavedDialogIdFromMessage(global, message);
   if (savedDialogId) {

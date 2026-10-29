@@ -4540,6 +4540,7 @@
 "TeleTwinDirectPick" = "Xodimga yozish";
 "TeleTwinDirectPickTitle" = "Kimga yozamiz?";
 "TeleTwinMentionIncoming" = "{name} sizni eslatdi: {text}";
+"TeleTwinReplyInThread" = "Thread'da javob berish";
 "TeleTwinWakeUp" = "🦆 Uyg'otish";
 "TeleTwinWakeUpPick" = "🦆 Uyg'otish…";
 "TeleTwinWakeUpPickTitle" = "Kimni uyg'otamiz?";

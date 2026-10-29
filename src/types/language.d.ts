@@ -3404,6 +3404,7 @@ export interface LangPair {
   'TeleTwinTelegramLogOut': undefined;
   'TeleTwinDirectPick': undefined;
   'TeleTwinDirectPickTitle': undefined;
+  'TeleTwinReplyInThread': undefined;
   'TeleTwinWakeUp': undefined;
   'TeleTwinWakeUpPick': undefined;
   'TeleTwinWakeUpPickTitle': undefined;

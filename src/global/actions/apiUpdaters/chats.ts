@@ -6,6 +6,7 @@ import { ARCHIVED_FOLDER_ID, MAX_ACTIVE_PINNED_CHATS, SERVICE_NOTIFICATIONS_USER
 import { buildCollectionByKey, omit } from '../../../util/iteratees';
 import { isLocalMessageId } from '../../../util/keys/messageKey';
 import { closeMessageNotifications, notifyAboutMessage } from '../../../util/notifications';
+import { isCorpThreadOnlyMessage } from '../../../teletwin/ids';
 import { checkIfHasUnreadReactions, isChatChannel } from '../../helpers';
 import {
   addActionHandler, getGlobal, setGlobal,
@@ -224,7 +225,9 @@ addActionHandler('apiUpdate', (global, actions, update): ActionReturnType => {
       const { chatId, id, message } = update;
 
       const isOur = message.senderId ? message.senderId === global.currentUserId : message.isOutgoing;
-      if (isOur && !message.isFromScheduled) {
+      // TeleTwin: corp thread replies neither count as unread chat messages nor notify (the server alerts the root
+      // author with a `mention` event)
+      if ((isOur && !message.isFromScheduled) || isCorpThreadOnlyMessage(message)) {
         return undefined;
       }
 

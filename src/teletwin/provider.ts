@@ -9,7 +9,7 @@ import type {
   ApiAttachment, ApiChat, ApiChatMember, ApiMessage, ApiMessageEntity, ApiMessagePoll, ApiNewPoll, ApiOnProgress,
   ApiPeer, ApiReaction, ApiSendMessageAction, ApiSticker, ApiVideo, MediaContent,
 } from '../api/types';
-import type { ForwardMessagesParams, SendMessageParams } from '../types';
+import type { ForwardMessagesParams, SendMessageParams, ThreadId } from '../types';
 import type {
   CorpMediaKind, CorpMessage, CorpNewPoll, CorpScheduledMessage,
 } from './api';
@@ -31,8 +31,9 @@ import { getServerTime } from '../util/serverTime';
 import { getRichInputAsFormatted } from '../components/ui/textInput/richText';
 import {
   closeCorpPoll, CorpApiError, createCorpScheduled, deleteCorpMessages, deleteCorpScheduled, editCorpMessage,
-  editCorpScheduled, fetchCorpMembers, fetchCorpMessages, fetchCorpScheduled, fetchCorpUnreadMentions,
-  forwardCorpMessages, readCorpChat, readCorpMentions, sendCorpMessage, sendCorpScheduledNow, sendCorpTyping,
+  editCorpScheduled, fetchCorpMembers, fetchCorpMessages, fetchCorpScheduled, fetchCorpThreadMessages,
+  fetchCorpUnreadMentions, forwardCorpMessages, readCorpChat, readCorpMentions, readCorpThread, sendCorpMessage,
+  sendCorpScheduledNow, sendCorpTyping,
   setCorpPin, setCorpReaction, uploadCorpFile, voteCorpPoll,
 } from './api';
 import { corpEngine } from './engine';
@@ -41,7 +42,7 @@ import {
 } from './ids';
 import { downloadCorpMedia, fetchMediaBlob } from './media';
 import {
-  buildCorpEntities, buildCorpScheduledMessage, buildCorpText, buildCorpUser, encodeWaveform,
+  buildCorpEntities, buildCorpScheduledMessage, buildCorpText, buildCorpThreadInfo, buildCorpUser, encodeWaveform,
 } from './state';
 
 const SEARCH_LIMIT_MAX = 200;
@@ -61,6 +62,7 @@ let localMessageCounter = 0;
 
 export const corpMethods: CorpMethods = {
   fetchMessages,
+  fetchDiscussionMessage,
   fetchMessage,
   fetchMessagesById,
   fetchPinnedMessages,
@@ -101,23 +103,27 @@ export function callCorpMethod(fnName: string, args: unknown[]) {
 // ---- history ----
 
 async function fetchMessages({
-  chat, offsetId, addOffset, limit,
-}: { chat: ApiChat; offsetId?: number; addOffset?: number; limit: number }) {
+  chat, threadId, offsetId, addOffset, limit,
+}: { chat: ApiChat; threadId?: ThreadId; offsetId?: number; addOffset?: number; limit: number }) {
   const serverChatId = getServerChatId(chat.id);
   const credentials = corpEngine.credentials!;
+  const rootId = threadId !== undefined && threadId !== MAIN_THREAD_ID ? Number(threadId) : undefined;
   const newerCount = offsetId ? Math.min(limit, Math.max(0, -(addOffset ?? 0))) : 0;
   const olderCount = limit - newerCount;
+  const fetchPage = (params: { afterId?: number; beforeId?: number; limit: number }) => (rootId
+    ? fetchCorpThreadMessages(credentials.server, credentials.token, serverChatId, rootId, params)
+    : fetchCorpMessages(credentials.server, credentials.token, serverChatId, params));
 
   const [older, newer] = await Promise.all([
-    olderCount > 0 ? fetchCorpMessages(credentials.server, credentials.token, serverChatId, {
-      beforeId: offsetId, limit: olderCount,
-    }) : [],
-    newerCount > 0 ? fetchCorpMessages(credentials.server, credentials.token, serverChatId, {
-      afterId: offsetId! - 1, limit: newerCount,
-    }) : [],
+    olderCount > 0 ? fetchPage({ beforeId: offsetId, limit: olderCount }) : [],
+    newerCount > 0 ? fetchPage({ afterId: offsetId! - 1, limit: newerCount }) : [],
   ]);
   const list = [...older, ...newer];
-  corpEngine.mergeFetched(serverChatId, list, offsetId);
+  if (rootId) {
+    corpEngine.rememberThreadReplies(serverChatId, list);
+  } else {
+    corpEngine.mergeFetched(serverChatId, list, offsetId);
+  }
 
   return {
     messages: buildMessages(list),
@@ -125,6 +131,35 @@ async function fetchMessages({
     chats: [],
     count: list.length,
     topics: [],
+  };
+}
+
+// Opening a thread: the root comes from the main history, the read position from its thread summary
+async function fetchDiscussionMessage({ chat, messageId }: { chat: ApiChat; messageId: number }) {
+  const serverChatId = getServerChatId(chat.id);
+  const credentials = corpEngine.credentials!;
+  const root = corpEngine.getThreadRoot(serverChatId, messageId) || (await fetchCorpMessages(
+    credentials.server, credentials.token, serverChatId, { afterId: messageId - 1, limit: 1 },
+  )).find(({ id }) => id === messageId);
+  const [message] = root ? buildMessages([root]) : [];
+  if (!message) return undefined;
+
+  const [firstReply] = await fetchCorpThreadMessages(credentials.server, credentials.token, serverChatId, messageId, {
+    afterId: 0, limit: 1,
+  });
+  const lastReadId = root?.thread?.lastReadId || 0;
+
+  return {
+    messages: [message],
+    topMessages: [message],
+    threadId: messageId,
+    threadReadState: { lastReadInboxMessageId: lastReadId || messageId },
+    threadInfo: buildCorpThreadInfo(
+      { id: messageId, thread: root?.thread }, chat.id, credentials.employee.id, getGlobal().currentUserId!,
+    ),
+    lastMessageId: undefined,
+    chatId: chat.id,
+    firstMessageId: firstReply?.id,
   };
 }
 
@@ -225,10 +260,12 @@ async function sendMessage(params: SendMessageParams, onProgress?: ApiOnProgress
       return false;
     });
     const fileId = await uploadOutgoingMedia(params, patchedOnProgress);
+    const { replyToId, threadRootId } = getOutgoingReply(params);
     const dto = await sendCorpMessage(credentials.server, credentials.token, serverChatId, {
       text: text || '',
       entities: buildCorpEntities(entities),
-      replyToId: params.replyInfo?.type === 'message' ? params.replyInfo.replyToMsgId : undefined,
+      replyToId,
+      threadRootId,
       fileId,
       clientId,
     });
@@ -358,7 +395,8 @@ function buildLocalMessage(
 ): ApiMessage {
   const global = getGlobal();
   const lastId = Math.floor(params.lastMessageId || selectChatLastMessageId(global, chat.id) || 0);
-  const replyToMsgId = params.replyInfo?.type === 'message' ? params.replyInfo.replyToMsgId : undefined;
+  const replyInfo = params.replyInfo?.type === 'message' ? params.replyInfo : undefined;
+  const replyToMsgId = replyInfo?.replyToMsgId;
 
   return {
     id: lastId + (++localMessageCounter / LOCAL_MESSAGES_LIMIT),
@@ -370,7 +408,7 @@ function buildLocalMessage(
       text: text ? buildCorpText(text, buildCorpEntities(entities), corpEngine.linkRule) : undefined,
       ...media?.content,
     },
-    replyInfo: replyToMsgId ? { type: 'message', replyToMsgId } : undefined,
+    replyInfo: replyToMsgId ? { type: 'message', replyToMsgId, replyToTopId: replyInfo?.replyToTopId } : undefined,
     groupedId: params.groupedId,
     isForwardingAllowed: true,
     sendingState: 'messageSendingStatePending',
@@ -578,9 +616,13 @@ async function unpinAllMessages({ chat }: { chat: ApiChat }) {
   await Promise.all(pinnedIds.map((id) => setCorpPin(credentials.server, credentials.token, serverChatId, id, false)));
 }
 
-async function markMessageListRead({ chat, maxId }: { chat: ApiChat; threadId: unknown; maxId?: number }) {
+async function markMessageListRead({ chat, threadId, maxId }: { chat: ApiChat; threadId: ThreadId; maxId?: number }) {
   if (!maxId || !Number.isInteger(maxId)) return;
   const credentials = corpEngine.credentials!;
+  if (threadId !== MAIN_THREAD_ID) {
+    await readCorpThread(credentials.server, credentials.token, getServerChatId(chat.id), Number(threadId), maxId);
+    return;
+  }
   await readCorpChat(credentials.server, credentials.token, getServerChatId(chat.id), maxId);
 }
 

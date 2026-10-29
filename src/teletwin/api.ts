@@ -133,6 +133,27 @@ export interface CorpMessage {
   isPinned?: boolean;
   clientId?: string;
   poll?: CorpPoll | null;
+  // Thread replies: the root message; `alsoToChannel` replies are also in the main history
+  threadRootId?: number | null;
+  alsoToChannel?: boolean;
+  // Thread roots with at least one reply
+  thread?: CorpThreadSummary | null;
+}
+
+export interface CorpThreadSummary {
+  replyCount: number;
+  lastReplyAt?: string | null;
+  recentReplierIds?: number[];
+  // The caller's read position, 0 in hub payloads
+  lastReadId?: number;
+}
+
+export interface CorpThreadUpdate {
+  chatId: number;
+  rootId: number;
+  replyCount: number;
+  lastReplyAt?: string | null;
+  recentReplierIds?: number[];
 }
 
 export interface CorpPollOption {
@@ -177,6 +198,8 @@ export interface CorpNewMessage {
   fileId?: string;
   clientId?: string;
   poll?: CorpNewPoll;
+  threadRootId?: number;
+  alsoToChannel?: boolean;
 }
 
 export interface CorpScheduledMessage {
@@ -195,7 +218,6 @@ export interface CorpScheduledMessage {
 
 export interface CorpNewScheduledMessage extends CorpNewMessage {
   sendAt: string;
-  threadRootId?: number;
 }
 
 export interface CorpUploadResult {
@@ -346,6 +368,26 @@ export function fetchCorpMessages(
   if (params.query) search.set('q', params.query);
 
   return request<CorpMessage[]>(server, 'GET', `chats/${chatId}/messages?${search.toString()}`, token);
+}
+
+export function fetchCorpThreadMessages(
+  server: string,
+  token: string,
+  chatId: number,
+  rootId: number,
+  params: { afterId?: number; beforeId?: number; limit: number },
+) {
+  const search = new URLSearchParams({ limit: String(params.limit) });
+  if (params.afterId !== undefined) search.set('afterId', String(params.afterId));
+  if (params.beforeId !== undefined) search.set('beforeId', String(params.beforeId));
+
+  return request<CorpMessage[]>(
+    server, 'GET', `chats/${chatId}/threads/${rootId}/messages?${search.toString()}`, token,
+  );
+}
+
+export function readCorpThread(server: string, token: string, chatId: number, rootId: number, maxId: number) {
+  return request<undefined>(server, 'POST', `chats/${chatId}/threads/${rootId}/read`, token, { maxId });
 }
 
 export function fetchCorpChanges(server: string, token: string, chatId: number, since: string) {

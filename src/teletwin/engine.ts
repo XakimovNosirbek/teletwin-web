@@ -3,7 +3,7 @@
 //  - hub: WebSockets only, `access_token` query, `Ready()` after connect, then catch up every loaded chat
 //    with GET messages?afterId=<last id> and GET changes?since=<last sync>
 //  - events: `message`, `message_edited`, `messages_deleted`, `reactions`, `pins`, `read`, `typing`, `wakeup`,
-//    `presence`, `mention`, `poll_updated`, `scheduled_changed`, `chats_changed` (reload chats), `logout` (revoke)
+//    `presence`, `mention`, `poll_updated`, `thread_updated`, `scheduled_changed`, `chats_changed` (reload chats), `logout` (revoke)
 //  - hub closed -> GET me: 401 -> revoke, otherwise reconnect with backoff 1 s, 2 s, 4 s ... 30 s (reset on connect)
 //  - any API 401 -> revoke
 // The engine keeps the loaded corp history (`messagesByChat`) and re-applies it after Telegram syncs replace
@@ -15,14 +15,14 @@ import { getActions, getGlobal, setGlobal } from '../global';
 import type { ApiMessage, ApiMessagePoll, ApiTypingStatus } from '../api/types';
 import type { GlobalState } from '../global/types';
 import type {
-  CorpChatInfo, CorpMention, CorpMessage, CorpPoll, CorpPresence, CorpReaction,
+  CorpChatInfo, CorpMention, CorpMessage, CorpPoll, CorpPresence, CorpReaction, CorpThreadUpdate,
 } from './api';
 import type { CorpLinkRule, CorpSnapshot } from './state';
 import type { CorpCredentials } from './storage';
 import { MAIN_THREAD_ID } from '../api/types';
 
 import { addUserStatuses, updateChat, updateUsers } from '../global/reducers';
-import { replaceThreadLocalStateParam, updateThreadReadState } from '../global/reducers/threads';
+import { replaceThreadLocalStateParam, updateThreadInfo, updateThreadReadState } from '../global/reducers/threads';
 import { selectChatMessage, selectCurrentMessageList, selectPoll } from '../global/selectors';
 import { selectThreadLocalStateParam, selectThreadReadState } from '../global/selectors/threads';
 import { getCurrentTabId } from '../util/establishMultitabRole';
@@ -37,8 +37,8 @@ import {
 } from './ids';
 import { clearCorpMedia } from './media';
 import {
-  applyCorpSnapshot, buildCorpMessage, buildCorpPoll, buildCorpReactions, buildCorpUser, buildCorpUserStatus,
-  isCorpDirectChat, isCorpSnapshotApplied, removeCorpData,
+  applyCorpSnapshot, buildCorpMessage, buildCorpPoll, buildCorpReactions, buildCorpThreadInfo, buildCorpThreadInfoFrom,
+  buildCorpUser, buildCorpUserStatus, isCorpDirectChat, isCorpSnapshotApplied, removeCorpData,
 } from './state';
 import {
   loadCredentials, loadReadMarks, removeCredentials, saveReadMarks,
@@ -108,6 +108,9 @@ class CorpEngine {
   private areChatsLoaded = false;
 
   private messagesByChat: Record<number, CorpMessage[]> = {};
+
+  // Thread replies that are not in the main history, by chat and id; they never enter the snapshot
+  private threadRepliesByChat: Record<number, Map<number, CorpMessage>> = {};
 
   private readMarks: Record<number, number> = {};
 
@@ -245,6 +248,7 @@ class CorpEngine {
     this.chats = [];
     this.areChatsLoaded = false;
     this.messagesByChat = {};
+    this.threadRepliesByChat = {};
     this.readMarks = {};
     this.snapshot = undefined;
     this.changesSince = {};
@@ -342,12 +346,54 @@ class CorpEngine {
     return buildCorpPoll(poll, this.credentials.employee.id, global.currentUserId!, isCreator, current, isFromHub);
   }
 
-  // Polls of messages the provider returns: GramJS sends them the same way, next to the messages
+  // Polls and thread roots of messages the provider returns: GramJS sends them the same way, next to the messages
   publishEntities(list: CorpMessage[]) {
     const polls = list.map((dto) => dto.poll && this.buildPoll(dto.poll, dto.senderId)).filter(Boolean);
-    if (!polls.length) return;
+    const threadInfos = list.filter((dto) => dto.thread).map((dto) => this.buildThreadInfo(dto)).filter(Boolean);
+    if (!polls.length && !threadInfos.length) return;
 
-    getActions().apiUpdate({ '@type': 'updateEntities', polls });
+    getActions().apiUpdate({
+      '@type': 'updateEntities',
+      polls: polls.length ? polls : undefined,
+      threadInfos: threadInfos.length ? threadInfos : undefined,
+    });
+  }
+
+  private buildThreadInfo(dto: CorpMessage) {
+    const chat = this.getChatInfo(dto.chatId);
+    if (!chat || !this.credentials) return undefined;
+    return buildCorpThreadInfo(dto, buildCorpChatId(chat.id), this.credentials.employee.id, getGlobal().currentUserId!);
+  }
+
+  // Thread replies fetched for the thread view, so live echoes of them are not shown twice
+  rememberThreadReplies(serverChatId: number, list: CorpMessage[]) {
+    const known = (this.threadRepliesByChat[serverChatId] ||= new Map());
+    list.forEach((dto) => {
+      if (isThreadOnly(dto)) known.set(dto.id, dto);
+    });
+  }
+
+  getThreadRoot(serverChatId: number, rootId: number) {
+    return this.messagesByChat[serverChatId]?.find(({ id }) => id === rootId);
+  }
+
+  applyThreadUpdate({
+    chatId: serverChatId, rootId, replyCount, lastReplyAt, recentReplierIds,
+  }: CorpThreadUpdate) {
+    if (!this.credentials || !this.getChatInfo(serverChatId)) return;
+    const root = this.getThreadRoot(serverChatId, rootId);
+    this.updateCached(serverChatId, rootId, {
+      thread: replyCount ? {
+        ...root?.thread, replyCount, lastReplyAt, recentReplierIds,
+      } : undefined,
+    });
+
+    let global = getGlobal();
+    global = updateThreadInfo(global, buildCorpThreadInfoFrom(
+      buildCorpChatId(serverChatId), rootId, replyCount, recentReplierIds, this.credentials.employee.id,
+      global.currentUserId!,
+    ));
+    setGlobal(global);
   }
 
   applyPoll(serverChatId: number, messageId: number, corpPoll: CorpPoll, isFromHub?: boolean) {
@@ -627,6 +673,15 @@ class CorpEngine {
   applyLive(dto: CorpMessage, localId?: number) {
     const list = this.messagesByChat[dto.chatId];
     if (!this.getChatInfo(dto.chatId) || !list || dto.isDeleted) return;
+
+    if (isThreadOnly(dto)) {
+      const known = (this.threadRepliesByChat[dto.chatId] ||= new Map());
+      if (known.has(dto.id) && localId === undefined) return;
+      known.set(dto.id, dto);
+      this.publishMessage(dto, localId);
+      return;
+    }
+
     const isKnown = list.some(({ id }) => id === dto.id);
     if (isKnown && localId === undefined) return;
 
@@ -819,6 +874,7 @@ class CorpEngine {
       chatId, employeeId, maxId,
     }) => this.applyRead(chatId, employeeId, maxId));
     on<HubTyping>('typing', (typing) => this.applyTyping(typing));
+    on<CorpThreadUpdate>('thread_updated', (update) => this.applyThreadUpdate(update));
     on<{ chatId: number; messageId: number; poll: CorpPoll }>('poll_updated', ({
       chatId, messageId, poll,
     }) => this.applyPoll(chatId, messageId, poll, true));
@@ -904,6 +960,10 @@ class CorpEngine {
 }
 
 export const corpEngine = new CorpEngine();
+
+function isThreadOnly(dto: CorpMessage) {
+  return Boolean(dto.threadRootId) && !dto.alsoToChannel;
+}
 
 function updatePinnedFlag<T extends GlobalState>(global: T, chatId: string, messageId: number, isPinned: boolean): T {
   const message = selectChatMessage(global, chatId, messageId);

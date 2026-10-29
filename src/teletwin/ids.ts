@@ -109,6 +109,13 @@ export function getEmployeeId(corpUserId: string) {
   return Number(corpUserId) - CORP_BARE_BASE;
 }
 
+// A corp thread reply that is not in the main history: the server keeps threads apart, unlike Telegram supergroups
+// where every reply is also a main history message. Corp messages carry `replyToTopId` only for such replies.
+export function isCorpThreadOnlyMessage(message: { chatId: string; replyInfo?: { type: string } }) {
+  return isCorpChatId(message.chatId) && message.replyInfo?.type === 'message'
+    && Boolean((message.replyInfo as { replyToTopId?: number }).replyToTopId);
+}
+
 // Corp polls live in the same `pollById` store as Telegram ones, under ids Telegram never uses
 const CORP_POLL_PREFIX = 'teletwin-corp-poll:';
 

@@ -40,6 +40,7 @@ import useFlag from '../../../hooks/useFlag';
 import useLang from '../../../hooks/useLang';
 import useLastCallback from '../../../hooks/useLastCallback';
 
+import { CorpReplyInThreadItem } from '../../../teletwin/components/CorpThread';
 import { CorpWakeUpMessageItem } from '../../../teletwin/components/CorpWakeUp';
 import AvatarList from '../../common/AvatarList';
 import Icon from '../../common/icons/Icon';
@@ -598,6 +599,12 @@ const MessageContextMenu = ({
         )}
         {canForward && <MenuItem icon="forward" onClick={onForward}>{lang('Forward')}</MenuItem>}
         {canSelect && <MenuItem icon="select" onClick={onSelect}>{lang('CommonSelect')}</MenuItem>}
+        <CorpReplyInThreadItem
+          message={message}
+          threadId={threadId}
+          messageListType={messageListType}
+          onClose={onClose}
+        />
         <CorpWakeUpMessageItem message={message} onClose={onClose} />
         {canReport && <MenuItem icon="flag" onClick={onReport}>{lang('ReportPeerReport')}</MenuItem>}
         {canDelete && (message.anchorMsgId ? (

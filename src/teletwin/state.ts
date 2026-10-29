@@ -1,6 +1,6 @@
 import type {
   ApiChat, ApiChatBannedRights, ApiChatFolder, ApiFormattedText, ApiMessage, ApiMessageEntity, ApiMessagePoll,
-  ApiPollResult, ApiReactions, ApiUser, ApiUserStatus, MediaContent,
+  ApiMessageThreadInfo, ApiPollResult, ApiReactions, ApiUser, ApiUserStatus, MediaContent,
 } from '../api/types';
 import type { GlobalState } from '../global/types';
 import type {
@@ -21,7 +21,7 @@ import {
 } from '../global/reducers';
 import { replaceThreadLocalStateParam, updateThreadInfo, updateThreadReadState } from '../global/reducers/threads';
 import { selectChatLastMessageId, selectChatMessages, selectPoll } from '../global/selectors';
-import { selectThread, selectThreadReadState } from '../global/selectors/threads';
+import { selectThread, selectThreadInfo, selectThreadReadState } from '../global/selectors/threads';
 import { omit } from '../util/iteratees';
 import { CORP_CHAT_KIND_CHANNEL, CORP_CHAT_KIND_DIRECT } from './api';
 import {
@@ -163,7 +163,7 @@ export function buildCorpMessage(
       ...(dto.media && buildCorpMediaContent(dto.media)),
       pollId: dto.poll ? buildCorpPollId(dto.poll.id) : undefined,
     },
-    replyInfo: dto.replyToId ? { type: 'message', replyToMsgId: dto.replyToId } : undefined,
+    replyInfo: buildCorpReplyInfo(dto),
     forwardInfo: dto.forward ? {
       date: parseCorpDate(dto.forward.sentAt || dto.sentAt),
       isChannelPost: false,
@@ -203,6 +203,38 @@ export function buildCorpScheduledMessage(
       replyToTopId: dto.threadRootId && !dto.alsoToChannel ? dto.threadRootId : undefined,
     } : undefined,
     isScheduled: true,
+  };
+}
+
+function buildCorpReplyInfo(dto: CorpMessage): ApiMessage['replyInfo'] {
+  const replyToMsgId = dto.replyToId || dto.threadRootId || undefined;
+  if (!replyToMsgId) return undefined;
+
+  return {
+    type: 'message',
+    replyToMsgId,
+    replyToTopId: dto.threadRootId && !dto.alsoToChannel ? dto.threadRootId : undefined,
+  };
+}
+
+// Group thread roots: the stock "N replies" counter of the message and the thread view
+export function buildCorpThreadInfo(
+  dto: Pick<CorpMessage, 'id' | 'thread'>, chatId: string, employeeId: number, telegramUserId: string,
+): ApiMessageThreadInfo {
+  return buildCorpThreadInfoFrom(chatId, dto.id, dto.thread?.replyCount ?? 0, dto.thread?.recentReplierIds,
+    employeeId, telegramUserId);
+}
+
+export function buildCorpThreadInfoFrom(
+  chatId: string, rootId: number, replyCount: number, recentReplierIds: number[] | undefined, employeeId: number,
+  telegramUserId: string,
+): ApiMessageThreadInfo {
+  return {
+    isCommentsInfo: false,
+    chatId,
+    threadId: rootId,
+    messagesCount: replyCount,
+    recentReplierIds: recentReplierIds?.map((id) => (id === employeeId ? telegramUserId : buildCorpUserId(id))),
   };
 }
 
@@ -585,6 +617,10 @@ function applyCorpHistory<T extends GlobalState>(
   }
 
   list.forEach((dto) => {
+    const threadInfo = selectThreadInfo(global, chatId, dto.id);
+    if (dto.thread && threadInfo?.messagesCount !== dto.thread.replyCount) {
+      global = updateThreadInfo(global, buildCorpThreadInfo(dto, chatId, employee.id, telegramUserId));
+    }
     if (!dto.poll || selectPoll(global, buildCorpPollId(dto.poll.id))) return;
     const poll = buildCorpPoll(dto.poll, employee.id, telegramUserId, dto.senderId === employee.id);
     global = updatePoll(global, poll.summary.id, poll);
