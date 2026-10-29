@@ -82,6 +82,7 @@ import buildClassName from '../../../util/buildClassName';
 import { copyTextToClipboard } from '../../../util/clipboard';
 import { isUserId } from '../../../util/entities/ids';
 import { getTranslationCacheKey, parseTranslationCacheKey } from '../../../util/keys/translationKey';
+import { isCorpChatId } from '../../../teletwin';
 import { getSelectionAsFormattedText } from './helpers/getSelectionAsFormattedText';
 import { isSelectionRangeInsideMessage } from './helpers/isSelectionRangeInsideMessage';
 
@@ -902,6 +903,8 @@ export default memo(withGlobal<OwnProps>(
 
     const activeDownloads = selectActiveDownloads(global);
     const chat = selectChat(global, message.chatId);
+    // Corp chats have no message links, reports or per-reader receipts
+    const isCorp = isCorpChatId(message.chatId);
     const isPrivate = chat && isUserId(chat.id);
     const chatFullInfo = !isPrivate ? selectChatFullInfo(global, message.chatId) : undefined;
     const user = selectUser(global, message.chatId);
@@ -1036,7 +1039,7 @@ export default memo(withGlobal<OwnProps>(
       topReactions,
       defaultTagReactions: defaultTags,
       noOptions: message.isEphemeral ? false : noOptions,
-      canReport: message.isEphemeral ? !message.isOutgoing : canReport,
+      canReport: message.isEphemeral ? !message.isOutgoing : canReport && !isCorp,
       canSendNow: isScheduled,
       canReschedule: isScheduled,
       canReply: message.isEphemeral
@@ -1052,15 +1055,15 @@ export default memo(withGlobal<OwnProps>(
       canUnfaveSticker: !message.isEphemeral && !isScheduled && canUnfaveSticker,
       canCopy: (canCopyNumber || (!isProtected && canCopy)),
       isMessageProtected: isProtected,
-      canCopyLink: !message.isEphemeral && !isScheduled && canCopyLink,
+      canCopyLink: !message.isEphemeral && !isScheduled && canCopyLink && !isCorp,
       canSelect: !message.isEphemeral && canSelect,
       canDownload: !isProtected && canDownload,
       canSaveGif: !isProtected && canSaveGif,
       canRevote: !message.isEphemeral && canRevote,
       canClosePoll: !message.isEphemeral && !isScheduled && canClosePoll,
       activeDownloads,
-      canShowSeenBy: !message.isEphemeral && canShowSeenBy,
-      canLoadReadDate: !message.isEphemeral && canLoadReadDate,
+      canShowSeenBy: !message.isEphemeral && canShowSeenBy && !isCorp,
+      canLoadReadDate: !message.isEphemeral && canLoadReadDate && !isCorp,
       shouldRenderShowWhen: !message.isEphemeral && shouldRenderShowWhen,
       enabledReactions: message.isEphemeral || chat?.isForbidden ? undefined : chatFullInfo?.enabledReactions,
       reactionsLimit,
