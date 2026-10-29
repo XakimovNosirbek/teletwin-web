@@ -7,6 +7,7 @@ import type { CorpCredentials, PendingRegistration } from './storage';
 import { selectTabState } from '../global/selectors';
 import { getCurrentTabId } from '../util/establishMultitabRole';
 import { createSignal } from '../util/signals';
+import { updatePeerColors } from '../util/theme';
 import {
   CorpApiError, DEFAULT_CORP_SERVER, isCorpUnauthorized, loginCorp, normalizeCorpServer, registerCorp,
   wakeUpCorpEmployee,
@@ -49,6 +50,9 @@ export function initTeleTwin() {
   corpEngine.onStatusChange = setCorpCredentials;
   corpEngine.onBindChange = handleBindChange;
   corpEngine.onWakeUp = handleWakeUp;
+  // Corp chats and employees have no photos: their initials avatars need the peer palette even before (or without)
+  // Telegram's peer colors being loaded, otherwise they render in the text color
+  if (!getGlobal().peerColors) updatePeerColors({});
   addCallback(handleGlobalChange);
   handleGlobalChange(getGlobal());
 
