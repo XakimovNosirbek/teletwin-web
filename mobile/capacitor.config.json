@@ -5,12 +5,13 @@
   "server": {
     "url": "https://dtwin.uz/teletwin/web/",
     "cleartext": false,
-    "allowNavigation": ["dtwin.uz"],
+    "allowNavigation": [
+      "dtwin.uz"
+    ],
     "errorPath": "offline.html"
   },
   "android": {
     "allowMixedContent": false,
-    "captureInput": false,
-    "webContentsDebuggingEnabled": false
+    "captureInput": false
   }
 }

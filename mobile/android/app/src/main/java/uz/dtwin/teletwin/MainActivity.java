@@ -7,6 +7,7 @@ import android.webkit.WebView;
 import androidx.activity.OnBackPressedCallback;
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.WebViewListener;
+import org.json.JSONObject;
 
 public class MainActivity extends BridgeActivity {
 
@@ -69,7 +70,15 @@ public class MainActivity extends BridgeActivity {
             // Handle each link once, also across activity re-creation.
             intent.setData(null);
             clearHistoryOnLoad = true;
-            bridge.getWebView().loadUrl(target);
+            WebView webView = bridge.getWebView();
+            String current = webView.getUrl();
+            if (current != null && current.startsWith(APP_URL)) {
+                // Only the hash differs, so loadUrl would be a same-document navigation and the web app
+                // reads tgaddr only at start-up: switch the hash, then reload the document.
+                webView.evaluateJavascript("location.replace(" + JSONObject.quote(target) + ");location.reload();", null);
+            } else {
+                webView.loadUrl(target);
+            }
         }
     }
 
