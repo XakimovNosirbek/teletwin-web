@@ -165,6 +165,10 @@ class CorpEngine {
     return this.credentials?.employee.id;
   }
 
+  get employeeName() {
+    return this.credentials?.employee.fullName;
+  }
+
   // Credentials changed in storage: a login, a logout or a revoke, possibly in another tab
   reloadCredentials(shouldNotify?: boolean) {
     const credentials = this.telegramUserId ? loadCredentials(this.telegramUserId) : undefined;

@@ -13,6 +13,7 @@ import {
   wakeUpCorpEmployee,
 } from './api';
 import { corpEngine } from './engine';
+import { isCorpChatId } from './ids';
 import {
   buildCredentialsKey, getDeviceId, loadPendingRegistration, removePendingRegistration, saveCredentials,
   savePendingRegistration,
@@ -201,6 +202,12 @@ function schedulePendingRetry() {
 function stopPendingRetry() {
   clearTimeout(pendingTimer);
   pendingTimer = undefined;
+}
+
+// Own corp messages carry the Telegram user id as the sender, so their quotes need the corp name instead
+export function getCorpOwnSenderTitle(message?: { chatId: string; isOutgoing: boolean }) {
+  if (!message?.isOutgoing || !isCorpChatId(message.chatId)) return undefined;
+  return corpEngine.employeeName;
 }
 
 export function logoutFromCorp() {

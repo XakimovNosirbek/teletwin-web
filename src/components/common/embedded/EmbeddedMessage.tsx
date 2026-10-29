@@ -24,6 +24,7 @@ import buildClassName from '../../../util/buildClassName';
 import { isUserId } from '../../../util/entities/ids';
 import { formatCalendarDate, secondsToDate } from '../../../util/localization/dateFormat';
 import { formatStarsAsIcon, formatTonAsIcon } from '../../../util/localization/format';
+import { getCorpOwnSenderTitle } from '../../../teletwin';
 import renderText from '../helpers/renderText';
 import { renderTextWithEntities } from '../helpers/renderTextWithEntities';
 
@@ -121,8 +122,8 @@ const EmbeddedMessage = ({
 
   const lang = useLang();
 
-  const senderTitle = sender ? getPeerTitle(lang, sender)
-    : (replyForwardInfo?.hiddenUserName || message?.forwardInfo?.hiddenUserName);
+  const senderTitle = getCorpOwnSenderTitle(message) || (sender ? getPeerTitle(lang, sender)
+    : (replyForwardInfo?.hiddenUserName || message?.forwardInfo?.hiddenUserName));
 
   const forwardSendersTitle = useMemo(() => {
     if (!composerForwardSenders) return undefined;
