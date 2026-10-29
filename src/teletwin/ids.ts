@@ -80,7 +80,8 @@ export function isCorpFolderId(folderId?: number) {
 // which the provider downloads from the corp server instead of Telegram.
 const CORP_MEDIA_PREFIX = 'teletwin-corp:';
 const CORP_THUMB_SEPARATOR = '~';
-const RE_CORP_MEDIA_HASH = /^(?:progressive\/)?(?:photo|document)teletwin-corp:([^?~]+)(?:~([^?]+))?(?:\?(.*))?$/;
+// The service worker passes progressive parts as full URLs (`https://…/web/progressive/documentteletwin-corp:…`)
+const RE_CORP_MEDIA_HASH = /^(?:.*\/)?(?:photo|document)teletwin-corp:([^?~/]+)(?:~([^?/]+))?(?:\?(.*))?$/;
 
 export function buildCorpMediaId(fileId: string, thumbFileId?: string) {
   return `${CORP_MEDIA_PREFIX}${fileId}${thumbFileId ? `${CORP_THUMB_SEPARATOR}${thumbFileId}` : ''}`;
