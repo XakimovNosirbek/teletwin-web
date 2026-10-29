@@ -14,7 +14,7 @@ const BADGE_TEXT_COLOR: Rgba<u8> = Rgba([0xFF, 0xFF, 0xFF, 0xFF]);
 
 pub fn set_badge_count_icon(window: &tauri::WebviewWindow, amount: i32, is_muted: bool) {
   if amount == 0 {
-    window.set_overlay_icon(None).unwrap_or_default();
+    set_overlay_icon(window, None);
 
     if let Ok(tray_opt) = super::TRAY_HANDLE.lock() {
       if let Some(tray) = tray_opt.as_ref() {
@@ -26,10 +26,10 @@ pub fn set_badge_count_icon(window: &tauri::WebviewWindow, amount: i32, is_muted
     let converted = Image::from_bytes(&png);
 
     if let Ok(converted) = converted {
-      window.set_overlay_icon(Some(converted)).unwrap_or_default();
+      set_overlay_icon(window, Some(converted));
     } else {
       log::error!("Failed to convert notification icon: {:?}", converted.err());
-      window.set_overlay_icon(None).unwrap_or_default();
+      set_overlay_icon(window, None);
     }
 
     // Update tray icon with counter overlay
@@ -45,6 +45,15 @@ pub fn set_badge_count_icon(window: &tauri::WebviewWindow, amount: i32, is_muted
     }
   }
 }
+
+// Taskbar overlay icons exist only on Windows
+#[cfg(windows)]
+fn set_overlay_icon(window: &tauri::WebviewWindow, icon: Option<Image<'_>>) {
+  window.set_overlay_icon(icon).unwrap_or_default();
+}
+
+#[cfg(not(windows))]
+fn set_overlay_icon(_window: &tauri::WebviewWindow, _icon: Option<Image<'_>>) {}
 
 pub fn generate_counter_png(size: u32, count: i32, is_muted: bool) -> Vec<u8> {
   let background_color = if is_muted {
