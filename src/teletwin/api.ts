@@ -545,6 +545,22 @@ export function fetchCorpConfig(server: string, token: string) {
   return request<CorpConfig>(server, 'GET', 'config', token);
 }
 
+export interface CorpJiraIssue {
+  key: string;
+  summary: string;
+  status: string;
+  // Jira category key: `new`, `indeterminate` or `done`
+  statusCategory: string;
+  assignee?: string | null;
+  priority?: string | null;
+  type?: string | null;
+  url?: string;
+}
+
+export function fetchCorpJiraIssue(server: string, token: string, key: string) {
+  return request<CorpJiraIssue>(server, 'GET', `jira/issues/${encodeURIComponent(key)}`, token);
+}
+
 export function wakeUpCorpEmployee(server: string, token: string, employeeId: number, chatId?: number) {
   return request<undefined>(server, 'POST', `employees/${employeeId}/wakeup`, token, { chatId });
 }
