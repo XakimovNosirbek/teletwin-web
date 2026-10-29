@@ -1,0 +1,76 @@
+# TeleTwin desktop packages: a Tauri shell that opens the hosted web app (BASE_URL),
+# so web deploys update every desktop install. Unsigned, no updater.
+
+name: TeleTwin desktop
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - teletwin
+    paths:
+      - 'tauri/**'
+      - '.github/workflows/teletwin-desktop.yml'
+
+env:
+  BASE_URL: https://dtwin.uz/teletwin/web/
+  APP_TITLE: TeleTwin
+
+jobs:
+  package:
+    name: Package ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows
+            platform: windows-latest
+            args: '--bundles nsis'
+          - name: macos-arm64
+            platform: macos-latest
+            args: '--target aarch64-apple-darwin --bundles dmg'
+          - name: macos-x64
+            platform: macos-latest
+            args: '--target x86_64-apple-darwin --bundles dmg'
+          - name: linux
+            platform: ubuntu-22.04
+            args: '--bundles deb,appimage'
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - run: npm ci
+
+      - name: Build packages
+        uses: tauri-apps/tauri-action@v0
+        id: build
+        with:
+          args: ${{ matrix.args }} -c tauri/tauri.teletwin.conf.json
+
+      - name: Collect packages
+        shell: bash
+        run: |
+          mkdir -p out
+          echo '${{ steps.build.outputs.artifactPaths }}' | jq -r '.[]' | while read -r f; do
+            [ -f "$f" ] && cp "$f" out/
+          done
+          ls -la out
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: TeleTwin-${{ matrix.name }}
+          path: out/*

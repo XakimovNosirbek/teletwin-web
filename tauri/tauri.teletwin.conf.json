@@ -1,0 +1,22 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "productName": "TeleTwin",
+  "identifier": "uz.dtwin.teletwin",
+  "build": {
+    "beforeDevCommand": "",
+    "devUrl": null,
+    "frontendDist": "https://dtwin.uz/teletwin/web/"
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["teletwin"]
+      }
+    }
+  },
+  "bundle": {
+    "copyright": "TeleTwin",
+    "shortDescription": "TeleTwin",
+    "longDescription": "Telegram and company chats in one app"
+  }
+}
