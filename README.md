@@ -14,7 +14,7 @@
   <img alt="SignalR" src="https://img.shields.io/badge/realtime-SignalR-512BD4">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-blue"></a>
   <img alt="Status" src="https://img.shields.io/badge/holat-beta%20(ichki%20sinov)-orange">
-  <a href="https://github.com/users/xnosir/projects/4"><img alt="Project" src="https://img.shields.io/badge/Project-%234-6f42c1?logo=github"></a>
+  <a href="https://github.com/orgs/dtwinuz/projects/4"><img alt="Project" src="https://img.shields.io/badge/Project-%234-6f42c1?logo=github"></a>
 </p>
 
 > [!NOTE]
@@ -32,7 +32,7 @@ faqat korxonaning TeleTwin serverida yashaydi. Admin xodimni o'chirsa, korxona q
 
 Bu repo — ekotizimning **web klienti** va undan qurilgan **desktop (Tauri)** hamda **Android (Capacitor)** qobiqlari.
 Server (backend), admin panel, Telegram Desktop fork va umumiy hujjatlar — asosiy repo'da:
-**[xnosir/teletwin](https://github.com/xnosir/teletwin)**.
+**[dtwinuz/teletwin](https://github.com/dtwinuz/teletwin)**.
 
 ## 🏠 Home va Overview
 
@@ -231,7 +231,7 @@ cd android && ./gradlew assembleDebug
 ```
 
 > [!TIP]
-> Korxona qismini sinash uchun TeleTwin server kerak — uni ishga tushirish [xnosir/teletwin](https://github.com/xnosir/teletwin) da.
+> Korxona qismini sinash uchun TeleTwin server kerak — uni ishga tushirish [dtwinuz/teletwin](https://github.com/dtwinuz/teletwin) da.
 > Login oynasidagi **"Server"** maydoniga server manzilini kiritasiz.
 
 ## ⚙️ Sozlash
@@ -269,7 +269,7 @@ flowchart LR
   C["push: teletwin"] --> D{"o'zgargan papka"}
   D -- "tauri/**" --> TD["teletwin-desktop.yml<br/>Win · macOS · Linux paketlari"]
   D -- "mobile/**" --> TA["teletwin-android.yml<br/>APK + debug APK + AAB"]
-  L["lokal: npm run build:production"] --> WEB["dist/ → deploy-web.sh<br/>(xnosir/teletwin repo'da)"]
+  L["lokal: npm run build:production"] --> WEB["dist/ → deploy-web.sh<br/>(dtwinuz/teletwin repo'da)"]
   WEB --> H["web ilova serverda"]
   TD -. "BASE_URL ni ochadi" .-> H
   TA -. "server.url ni ochadi" .-> H
@@ -292,17 +292,17 @@ Fork **orphan import** sifatida boshlangan: upstream tarixi olib kelinmagan, bir
 | 2026-10-29 | `276ffe9` Upstream import | Telegram Web A `6002824` (GPL-3.0) asos qilib olindi |
 | 2026-10-29 | `b1ef911`…`04ecee1` Korxona qatlami MVP | "Korxona" papkasi, API guard, menyu, CSP, TeleTwin brendi |
 | 2026-10-29 | `1262325`…`acf5e4b` Desktop CI | Tauri paketlari Win/macOS/Linux uchun yashil |
-| 2026-10-29 | PR [#1](https://github.com/xnosir/teletwin-web/pull/1) Android | Capacitor qobiq, native bridge, tester APK imzosi |
+| 2026-10-29 | PR [#1](https://github.com/dtwinuz/teletwin-web/pull/1) Android | Capacitor qobiq, native bridge, tester APK imzosi |
 | 2026-10-29 | `7b71d0d`…`38132ed` Provider + Gate | korxona chatlari bloklanmaydi, provider orqali ishlaydi; majburiy kirish; DM; wake-up |
 | 2026-10-29 | `3a14c86`…`4bd9dc0` Stage A UI | mention, poll, rejalashtirilgan xabar, thread |
 | 2026-10-29 → 30 | `bfc3b10`…`a1af5fd` Stage B UI | Jira kartochka, guruh mention, mute, holat/DND, global qidiruv |
 | 2026-10-30 | `caafd44`…`a8061b8` Ish joyi | ovozli xabar fix, saqlanganlar + eslatma, Faollik, Profilim, Kanallar katalogi, kanal thread |
 
-PR [#2](https://github.com/xnosir/teletwin-web/pull/2) (Android klaviatura) — foydasi o'lchanmagani uchun yopilgan.
+PR [#2](https://github.com/dtwinuz/teletwin-web/pull/2) (Android klaviatura) — foydasi o'lchanmagani uchun yopilgan.
 
 ## 🗺 Yo'l xaritasi
 
-To'liq reja va holat: **[GitHub Project #4](https://github.com/users/xnosir/projects/4)**.
+To'liq reja va holat: **[GitHub Project #4](https://github.com/orgs/dtwinuz/projects/4)**.
 
 - 🧪 Sifat: `src/teletwin/` uchun unit testlar (guard, ids), web uchun PR CI (tsc + eslint + vitest)
 - 🧩 Korxona funksiyalarini to'liq tasdiqlash: forward, hujjat, round video, sticker, ro'yxatdan o'tish oqimi
