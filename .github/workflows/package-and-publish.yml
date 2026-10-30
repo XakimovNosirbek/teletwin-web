@@ -20,6 +20,9 @@ on:
     branches:
       - master
 
+permissions:
+  contents: read
+
 env:
   IS_ON_MASTER: ${{ github.ref == 'refs/heads/master' }}
   SHOULD_PUBLISH: ${{ github.ref == 'refs/heads/master' && vars.PUBLISH_REPO || '' }}
@@ -38,6 +41,8 @@ jobs:
       release-name: ${{ steps.extract-version.outputs.release-name }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - name: Extract version and tag
         id: extract-version
@@ -138,6 +143,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - name: Set Xcode version
         if: matrix.settings.platform == 'macos-latest'
@@ -307,6 +314,8 @@ jobs:
       RELEASE_ID: ${{ needs.create-release.outputs.releaseId }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - name: Publish release
         run: |
