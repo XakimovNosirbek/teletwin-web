@@ -14,7 +14,7 @@
   <img alt="SignalR" src="https://img.shields.io/badge/realtime-SignalR-512BD4">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-GPL--3.0-blue"></a>
   <img alt="Status" src="https://img.shields.io/badge/holat-beta%20(ichki%20sinov)-orange">
-  <a href="https://github.com/orgs/dtwinuz/projects/4"><img alt="Project" src="https://img.shields.io/badge/Project-%234-6f42c1?logo=github"></a>
+  <a href="https://github.com/orgs/dtwinuz/projects/9"><img alt="Project" src="https://img.shields.io/badge/Project-%239-6f42c1?logo=github"></a>
 </p>
 
 > [!NOTE]
@@ -302,7 +302,7 @@ PR [#2](https://github.com/dtwinuz/teletwin-web/pull/2) (Android klaviatura) —
 
 ## 🗺 Yo'l xaritasi
 
-To'liq reja va holat: **[GitHub Project #4](https://github.com/orgs/dtwinuz/projects/4)**.
+To'liq reja va holat: **[GitHub Project #9](https://github.com/orgs/dtwinuz/projects/9)**.
 
 - 🧪 Sifat: `src/teletwin/` uchun unit testlar (guard, ids), web uchun PR CI (tsc + eslint + vitest)
 - 🧩 Korxona funksiyalarini to'liq tasdiqlash: forward, hujjat, round video, sticker, ro'yxatdan o'tish oqimi
