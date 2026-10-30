@@ -12,6 +12,9 @@ on:
       - 'tauri/**'
       - '.github/workflows/teletwin-desktop.yml'
 
+permissions:
+  contents: read
+
 env:
   BASE_URL: https://dtwin.uz/teletwin/web/
   APP_TITLE: TeleTwin
@@ -38,6 +41,8 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
