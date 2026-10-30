@@ -31,8 +31,10 @@ yonida esa **"Korxona"** papkasi paydo bo'ladi — u chatlar, kanallar va xabarl
 faqat korxonaning TeleTwin serverida yashaydi. Admin xodimni o'chirsa, korxona qismi darhol yo'qoladi, shaxsiy Telegram qoladi.
 
 Bu repo — ekotizimning **web klienti** va undan qurilgan **desktop (Tauri)** hamda **Android (Capacitor)** qobiqlari.
-Server (backend), admin panel, Telegram Desktop fork va umumiy hujjatlar — asosiy repo'da:
-**[dtwinuz/teletwin](https://github.com/dtwinuz/teletwin)**.
+Server (backend), admin panel va umumiy hujjatlar — asosiy repo'da:
+**[dtwinuz/teletwin](https://github.com/dtwinuz/teletwin)** (yopiq repo, faqat `dtwinuz` a'zolari uchun).
+Klassik C++ desktop klient (Telegram Desktop fork) — alohida [dtwinuz/teletwin-desktop](https://github.com/dtwinuz/teletwin-desktop)
+repo'si (yopiq), asosiy repo'ga `client/tdesktop` submodule sifatida ulangan.
 
 ## 🏠 Home va Overview
 
@@ -250,7 +252,7 @@ cd android && ./gradlew assembleDebug
 
 | Joy | Nima |
 |---|---|
-| `src/teletwin/api.ts` → `DEFAULT_CORP_SERVER` | korxona serverining default manzili; foydalanuvchi login oynasida o'zgartira oladi |
+| `src/teletwin/api.ts` → `DEFAULT_CORP_SERVER` | korxona serverining default manzili: ilova HTTPS'da `.../web/` ostidan ochilsa — o'sha serverning o'zi, aks holda `https://tele.dtwin.uz/`; foydalanuvchi login oynasida o'zgartira oladi |
 | `tauri/tauri.teletwin.conf.json` → `frontendDist` | desktop qobiq ochadigan web manzil |
 | `mobile/capacitor.config.json` → `server.url` | Android qobiq ochadigan web manzil |
 | `vite.config.ts` → CSP `connect-src` | boshqa serverga ko'chilsa shu yerga ham qo'shiladi |
@@ -276,10 +278,15 @@ flowchart LR
 ```
 
 - **Web** — `dist/` lokal build qilinadi va asosiy repo'dagi `deploy/deploy-web.sh` bilan serverga yuklanadi
-  (`*.map` va build statistikasi yuklanmaydi). Hozirgi ommaviy manzil: `https://dtwin.uz/teletwin/web/`.
+  (`*.map` va build statistikasi yuklanmaydi). Hozirgi ommaviy manzil: <https://tele.dtwin.uz/web/>; xuddi shu build
+  `https://dtwin.uz/teletwin/web/` da ham ochiladi — desktop (`frontendDist`) va Android (`server.url`) qobiqlari shu manzilni ochadi.
 - **Desktop va Android** qobiqlari web ilovani serverdan ochadi — shuning uchun **web deploy har bir o'rnatilgan
   desktop va telefonni avtomatik yangilaydi**, yangi paket faqat qobiq o'zgarganda kerak.
-- Paketlar GitHub Actions artefakti sifatida chiqadi (Release sahifasi hali yo'q). Desktop paketlari kod-imzosiz.
+- Paketlar GitHub Actions artefakti sifatida chiqadi; bu repo'da GitHub Release yo'q. Tarqatilayotgan paketlar
+  (desktop `TeleTwin_2.12.2_*` — Windows setup, macOS arm64/x64 DMG, Linux deb/AppImage; Android `TeleTwin-1.0.4-android.apk`)
+  home sahifaning [yuklab olish bo'limida](https://tele.dtwin.uz/#download), SHA-256 —
+  [downloads.json](https://tele.dtwin.uz/download/downloads.json). Windows setup
+  [dtwinuz/teletwin v0.1.0](https://github.com/dtwinuz/teletwin/releases/tag/v0.1.0) relizida ham bor. Desktop paketlari kod-imzosiz.
 - Upstream'dan qolgan `package-and-publish.yml` faqat `master` push yoki qo'lda ishga tushadi — TeleTwin uchun ishlatilmaydi.
 
 ## 📜 Tarix
@@ -297,6 +304,8 @@ Fork **orphan import** sifatida boshlangan: upstream tarixi olib kelinmagan, bir
 | 2026-10-29 | `3a14c86`…`4bd9dc0` Stage A UI | mention, poll, rejalashtirilgan xabar, thread |
 | 2026-10-29 → 30 | `bfc3b10`…`a1af5fd` Stage B UI | Jira kartochka, guruh mention, mute, holat/DND, global qidiruv |
 | 2026-10-30 | `caafd44`…`a8061b8` Ish joyi | ovozli xabar fix, saqlanganlar + eslatma, Faollik, Profilim, Kanallar katalogi, kanal thread |
+| 2026-10-30 | `c04cf95` Default server | `DEFAULT_CORP_SERVER`: ilovani bergan server, boshqa joyda `https://tele.dtwin.uz/` |
+| 2026-10-30 | PR [#3](https://github.com/dtwinuz/teletwin-web/pull/3), [#25](https://github.com/dtwinuz/teletwin-web/pull/25), [#26](https://github.com/dtwinuz/teletwin-web/pull/26), [#27](https://github.com/dtwinuz/teletwin-web/pull/27) Repo | README o'zbekcha, Home/Overview havolalari, `dtwinuz` org havolalari, `CODEOWNERS` + Dependabot |
 
 PR [#2](https://github.com/dtwinuz/teletwin-web/pull/2) (Android klaviatura) — foydasi o'lchanmagani uchun yopilgan.
 
