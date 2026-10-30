@@ -34,6 +34,14 @@ Bu repo — ekotizimning **web klienti** va undan qurilgan **desktop (Tauri)** h
 Server (backend), admin panel, Telegram Desktop fork va umumiy hujjatlar — asosiy repo'da:
 **[xnosir/teletwin](https://github.com/xnosir/teletwin)**.
 
+## 🏠 Home va Overview
+
+| Sahifa | Havola |
+|---|---|
+| 🏠 **Home** — mahsulot sahifasi va yuklab olish | <https://tele.dtwin.uz/> |
+| 🎬 **Overview** — bir daqiqalik jonli tanishuv | [uz](https://tele.dtwin.uz/overview/) · [ru](https://tele.dtwin.uz/overview/ru/) · [en](https://tele.dtwin.uz/overview/en/) |
+| 💬 **Ilova** — Telegram + korxona (Web) · PWA | <https://tele.dtwin.uz/web/> · <https://tele.dtwin.uz/app/> |
+
 ## ✨ Imkoniyatlar
 
 Belgilar: ✅ kod bor va ishlatilmoqda · 🟡 kod bor, to'liq sinalmagan · 🔜 rejada
